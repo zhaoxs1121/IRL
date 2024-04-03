@@ -32,20 +32,20 @@ data_num = "01"
 def create_args():
     parser = argparse.ArgumentParser(description="ParameterOptimizer")
     # --- Input paths ---
-    parser.add_argument('--input_path', default="D:/learn/23SS/guided research/highd-dataset-v1.0/data/"+data_num+"_tracks.csv", type=str,
+    parser.add_argument('--input_path', default="D:/learn/23SS/guided_research/highd-dataset-v1.0/data/"+data_num+"_tracks.csv", type=str,
                         help='CSV file of the tracks')
-    parser.add_argument('--input_static_path', default="D:/learn/23SS/guided research/highd-dataset-v1.0/data/"+data_num+"_tracksMeta.csv",
+    parser.add_argument('--input_static_path', default="D:/learn/23SS/guided_research/highd-dataset-v1.0/data/"+data_num+"_tracksMeta.csv",
                         type=str,
                         help='Static meta data file for each track')
-    parser.add_argument('--input_meta_path', default="D:/learn/23SS/guided research/highd-dataset-v1.0/data/"+data_num+"_recordingMeta.csv",
+    parser.add_argument('--input_meta_path', default="D:/learn/23SS/guided_research/highd-dataset-v1.0/data/"+data_num+"_recordingMeta.csv",
                         type=str,
                         help='Static meta data file for the whole video')
-    parser.add_argument('--pickle_path', default="D:/learn/23SS/guided research/highd-dataset-v1.0/data/"+data_num+".pickle", type=str,
+    parser.add_argument('--pickle_path', default="D:/learn/23SS/guided_research/highd-dataset-v1.0/data/"+data_num+".pickle", type=str,
                         help='Converted pickle file that contains corresponding information of the "input_path" file')
     # --- Settings ---
     parser.add_argument('--visualize', default=True, type=lambda x: (str(x).lower() == 'true'),
                         help='True if you want to visualize the data.')
-    parser.add_argument('--background_image', default="D:/learn/23SS/guided research/highd-dataset-v1.0/data/"+data_num+"_highway.jpg", type=str,
+    parser.add_argument('--background_image', default="D:/learn/23SS/guided_research/highd-dataset-v1.0/data/"+data_num+"_highway.jpg", type=str,
                         help='Optional: you can specify the correlating background image.')
 
     # --- Visualization settings ---
@@ -120,32 +120,32 @@ if __name__ == '__main__':
 vf_tracks = filter_vf_tracks(tracks)
 # print('number',len(vf_tracks))
 ############################################## combine these vehicles with their preceding vehicle and compute everything we need ##############################################
-V,A,Nu,D,Pr_x_a,pairs = combine_and_compute(vf_tracks,tracks)
-
+# V,A,Nu,D,Pr_x_a,pairs = combine_and_compute(vf_tracks,tracks)
+V,A,Nu,D,Pr_x_a,pairs = combine_and_compute_art(vf_tracks,tracks)
 ################################################################## dynamic least square solver #################################################################
-# def dynamic(x):
-#   min = x[0]*D-x[1]*V+x[2]*Nu-A#-x[3] #(x[0]*np.sum(D)-x[1]*np.sum(V))/V.shape[0]
-#   return np.sum(min*min)
+def dynamic(x):
+  min = x[0]*D-x[1]*V+x[2]*Nu-A#-x[3] #(x[0]*np.sum(D)-x[1]*np.sum(V))/V.shape[0]
+  return np.sum(min*min)
 
-# x0 = np.array([0,0,0])
-# # res_x = least_squares(dynamic, x0, bounds=(0,10), method='trf')
+x0 = np.array([0,0,0])
+# res_x = least_squares(dynamic, x0, bounds=(0,10), method='trf')
 
-# cons = [{"type": "eq", "fun": lambda x: np.sum(x[0]*D - x[1]*V)}]# - x[3]
-# res_x = minimize(fun=dynamic, x0=x0, bounds=[(0, 10), (0, 10), (0, 10)], constraints=cons)
+cons = [{"type": "eq", "fun": lambda x: np.sum(x[0]*D - x[1]*V)}]# - x[3]
+res_x = minimize(fun=dynamic, x0=x0, bounds=[(0, 10), (0, 10), (0, 10)], constraints=cons)
 
-# # print(res_x.x)
+print(res_x.x)
 
-# kp = res_x.x[0]
-# kph = res_x.x[1]
-# kd = res_x.x[2]
-# # kpr = res_x.x[3]
-# # r = kpr/kp
-# h = kph/kp
-#r = (kp*np.sum(D)-kph*np.sum(V))/V.shape[0]
+kp = res_x.x[0]
+kph = res_x.x[1]
+kd = res_x.x[2]
+# kpr = res_x.x[3]
+# r = kpr/kp
+h = kph/kp
+r = (kp*np.sum(D)-kph*np.sum(V))/V.shape[0]
 
-kp= 0.006354857329713133 
-kd= 0.16748344692513145 
-h= 0.8903920819008573
+# kp= 0.006354857329713133 
+# kd= 0.16748344692513145 
+# h= 0.8903920819008573
 
 print("kp=",kp,"kd=",kd,"h=",h)#,"r=",r)
 
