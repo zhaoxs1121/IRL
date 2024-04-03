@@ -16,6 +16,7 @@ from scipy.stats import norm
 import quadprog
 import cvxopt
 from scipy import linalg as la
+from scipy import special
 import pygad
 
 from data_management.read_csv import *
@@ -39,51 +40,62 @@ def filter_vf_tracks(tracks):
         vf_tracks.append(track)
   return vf_tracks
 
+def OV(x, v_max, h_go, h_st): # nonlinear sigmoidal function 'optimal velocity'
+    return 0.5 * v_max * (1 + special.erf(10*(x - (h_go + h_st)/2) / (math.pi * (h_go - h_st))))
+
 def combine_and_compute(vf_tracks,tracks):
   NU = "nu"
   P_X_V = "p_x_v"
+  P_X = "p_x"
+  P_L = 'p_l'
+  X = "x"
   pairs = []#save information of every vehicle pair
   count = 0
+  dt = 0.04
   for track in vf_tracks:
     pr_track = tracks[track[PRECEDING_ID][0]-1]
     frame = np.intersect1d(track[FRAME],pr_track[FRAME])
+    x = track[BBOX][:,0][:len(frame)]
     x_v = track[X_VELOCITY][:len(frame)]
     x_a = track[X_ACCELERATION][:len(frame)]
     dhw = track[DHW][:len(frame)]
+    pr_x = pr_track[BBOX][:,0][-len(frame):]
     pr_x_v = pr_track[X_VELOCITY][-len(frame):]
+    # pr_x_a = pr_track[X_VELOCITY][-len(frame):] - pr_track[X_VELOCITY][-len(frame)-1:-1]
+    pr_x_a = pr_track[X_ACCELERATION][-len(frame):]
+
     nu = pr_x_v - x_v
-    pr_x_a = pr_track[X_VELOCITY][-len(frame):] - pr_track[X_VELOCITY][-len(frame)-1:-1]
+
+    # x_reg = np.copy(x)
+    # x_v_reg = np.copy(x_v)
+    # for i in range(len(frame)-1):
+    #   x_v_reg[i+1] = x_v_reg[i] + dt * 
+    #   x_reg[i+1] = 
+
     
     if track[LANE_ID][0] < 4:
+      x = -x
       x_a = -x_a
       nu = -nu
       x_v = -x_v
+      pr_x = -pr_x
+      pr_x_a = -pr_x_a
+      pr_x_v = -pr_x_v
 
     pair = {TRACK_ID: pr_track[TRACK_ID]*100+track[TRACK_ID],  
             FRAME: frame,
+            X: x,
             X_VELOCITY: x_v,
             X_ACCELERATION: x_a,
             DHW: dhw,
             NU: nu,
             PRECEDING_ID: track[PRECEDING_ID][:len(frame)],
             LANE_ID: track[LANE_ID][:len(frame)],
+            P_L: float(pr_track[BBOX][0,2]),
+            P_X: pr_x,
             P_X_V: pr_x_v
             }
     pairs.append(pair)
-
-    # if count == 0:
-    #   V = x_v
-    #   A = x_a
-    #   Nu = nu
-    #   D = dhw
-    #   Pr_x_a = pr_x_a
-    #   count = 1
-    # else:
-    #   V = np.concatenate((V,x_v))
-    #   A = np.concatenate((A,x_a))
-    #   Nu = np.concatenate((Nu,nu))
-    #   D = np.concatenate((D,dhw))
-    #   Pr_x_a = np.concatenate((Pr_x_a,pr_x_a))
 
     if count == 0:
       V = x_v
@@ -98,6 +110,93 @@ def combine_and_compute(vf_tracks,tracks):
       Nu = np.concatenate((Nu,nu))
       D = np.concatenate((D,dhw))
       Pr_x_a = np.concatenate((Pr_x_a,pr_x_a))
+
+  # print(pr_x_a)
+  return V,A,Nu,D,Pr_x_a,pairs
+
+def combine_and_compute_art(vf_tracks,tracks):
+  NU = "nu"
+  P_X_V = "p_x_v"
+  pairs = []#save information of every vehicle pair
+  count = 0
+  dt = 0.04
+
+  for track in vf_tracks:
+    pr_track = tracks[track[PRECEDING_ID][0]-1]
+    frame = np.intersect1d(track[FRAME],pr_track[FRAME])
+    x = track[BBOX][:,0][:len(frame)]
+    x_v = track[X_VELOCITY][:len(frame)]
+    x_a = track[X_ACCELERATION][:len(frame)]
+    x_v_art = np.copy(x_v)
+    x_a_art = np.copy(x_a)
+    for i in range(len(x)-1):
+      x_v_art[i+1] = (x[i+1]-x[i]) / dt
+      x_a_art[i+1] = (x_v_art[i+1]-x_v_art[i]) / dt
+
+    dhw = track[DHW][:len(frame)]
+
+    pr_x = pr_track[BBOX][:,0][-len(frame):]
+    pr_x_v = pr_track[X_VELOCITY][-len(frame):]
+    pr_x_a = pr_track[X_ACCELERATION][-len(frame):]
+    pr_x_v_art = np.copy(pr_x_v)
+    pr_x_a_art = np.copy(pr_x_a)
+    for i in range(len(x)-1):
+      pr_x_v_art[i+1] = (pr_x[i+1]-pr_x[i]) / dt
+      pr_x_a_art[i+1] = (pr_x_v_art[i+1]-pr_x_v_art[i]) / dt
+
+    nu = pr_x_v - x_v
+    nu_art = pr_x_v_art - x_v_art
+    
+    
+    if track[LANE_ID][0] < 4:
+      x_a = -x_a
+      nu = -nu
+      x_v = -x_v
+      pr_x_a = -pr_x_a
+      pr_x_v = -pr_x_v
+
+      x_a_art = -x_a_art
+      nu_art = -nu_art
+      x_v_art = -x_v_art
+      pr_x_a_art = -pr_x_a_art
+      pr_x_v_art = -pr_x_v_art
+
+    pair = {TRACK_ID: pr_track[TRACK_ID]*100+track[TRACK_ID],  
+            FRAME: frame,
+            X_VELOCITY: x_v,
+            X_ACCELERATION: x_a,
+            DHW: dhw,
+            NU: nu,
+            PRECEDING_ID: track[PRECEDING_ID][:len(frame)],
+            LANE_ID: track[LANE_ID][:len(frame)],
+            P_X_V: pr_x_v
+            }
+    pairs.append(pair)
+
+    # x_v = x_v_art
+    # x_a = x_a_art
+    # nu = nu_art
+    # dhw = dhw
+    # pr_x_a = pr_x_a_art
+
+    if count == 0:
+      V = x_v
+      A = x_a
+      Nu = nu
+      D = dhw
+      Pr_x_a = pr_x_a
+      count = 1
+    elif np.all(nu>-4) and np.all(nu<4) and np.all(dhw>10) and np.all(dhw<49):
+      V = np.concatenate((V,x_v))
+      A = np.concatenate((A,x_a))
+      Nu = np.concatenate((Nu,nu))
+      D = np.concatenate((D,dhw))
+      Pr_x_a = np.concatenate((Pr_x_a,pr_x_a))
+
+  # print(frame)
+  # print(len(frame))
+  # print(x_v_art)
+  # print(x_a_art)
 
   return V,A,Nu,D,Pr_x_a,pairs
 
