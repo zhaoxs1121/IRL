@@ -4,7 +4,7 @@ import pandas
 import pickle
 import argparse
 import numpy as np
-
+import random
 import matplotlib.pyplot as plt
 import scipy.io
 from scipy.optimize import curve_fit, least_squares, minimize
@@ -17,7 +17,6 @@ import quadprog
 import cvxopt
 from scipy import linalg as la
 from scipy import special
-import pygad
 
 from data_management.read_csv import *
 from data_management.functions import *
@@ -128,47 +127,210 @@ V,A,Nu,D,Pr_x_a,pairs = combine_and_compute(vf_tracks,tracks)
 # print(len(pairs))
 ################################################################## dynamic least square solver #################################################################
 def OV(x, v_max, h_go, h_st): # nonlinear sigmoidal function 'optimal velocity'
-    return 0.5 * v_max * (1 + special.erf(10*(x - (h_go + h_st)/2) / (math.pi * (h_go - h_st + 0.001))))
+    return 0.5 * v_max * (1 + math.erf(10*(x - (h_go + h_st)/2) / (math.pi * (h_go - h_st + 0.001))))
 
-def optimization(x): # the OV-FTL model
-  P_X_V = "p_x_v"
+def genetic(pairs):
+  G = []
+  P_V = "p_v"
   P_X = "p_x"
   P_L = 'p_l'
   X = "x"
-  sum_error = 0
+  for i in range(len(pairs)):
+    pair = pairs[i]
+    n = len(pair[X])
+    g = np.zeros((5,n))
+    g[0,:] = pair[X]
+    g[1,:] = pair[X_VELOCITY]
+    g[2,:] = pair[P_X]
+    g[3,:] = pair[P_V]
+    g[4,:] = np.ones((1,n))*pair[P_L]
+    G.append(g)
+  return G
+        
+# G = genetic(pairs)
+# print(len(G))
+
+def optimization(x): # the OV-FTL model
+  P_V = "p_v"
+  P_X = "p_x"
+  P_L = 'p_l'
+  X = "x"
   dt = 0.04
 
-  for m in range(len(pairs)):#len(pairs)
+  cost0 = 0
+  e_mean = 0
+  e_var = 0
+
+  # ind = np.random.randint(len(pairs), size=(50))
+  num_ind = 10#len(pairs)
+  for m in range(num_ind):
     pair = pairs[m]
     x_reg = np.copy(pair[X]) # x_ego to be regenerated
     v_reg = np.copy(pair[X_VELOCITY]) # v_ego to be regenerated
+    u_reg = np.copy(pair[X_ACCELERATION])
     pr_x = pair[P_X] # x_pr
-    pr_v = pair[P_X_V] # v_pr
-    pr_l = pair[P_L] # length of preceeding car
+    pr_v = pair[P_V] # v_pr
+    pr_l = pair[P_L] # length of preceding car
+    e = np.zeros(x_reg.shape)
     for i in range(len(x_reg)-1):
       nu = pr_v[i] - v_reg[i] # nu
       s = pr_x[i] - x_reg[i] - pr_l # s(t)
-      v_reg[i+1] = v_reg[i] + dt * (x[0] * nu / s*s + x[1] * (OV(s,x[2],x[3],x[4]) - v_reg[i])) # v(t+1) = v(t) + dt * v'(t), where v'(t) is shown in eq. 4.
-      x_reg[i+1] = x_reg[i] + dt * v_reg[i] # x(t+1) = x(t) + dt * x'(t)
+      u_reg[i] = x[0] * nu / s*s + x[1] * (OV(s,x[2],x[3],x[4]) - v_reg[i])
+      v_reg[i+1] = v_reg[i] + dt * u_reg[i] # v(t+1) = v(t) + dt * v'(t), where v'(t) is shown in eq. 4.
+      x_reg[i+1] = x_reg[i] + dt * v_reg[i+1] # x(t+1) = x(t) + dt * x'(t) ##v_reg[i]
 
-      sum_error += abs(x_reg[i+1] - pair[X][i+1])
-    # print(sum_error)
+      cost0 += (x_reg[i+1] - pair[X][i+1])**2
 
+    for i in range(1,len(x_reg)-1):
+      p_v = (pair[P_X][i] - pair[P_X][i-1]) / dt
+      v = (pair[X][i] - pair[X][i-1]) / dt
+      nu = p_v - v
+      s = pair[P_X][i] - pair[X][i] - pr_l
+      u = x[0] * nu / s*s + x[1] * (OV(s,x[2],x[3],x[4]) - v)
+      e[i] = (pair[X][i+1] - 2*pair[X][i] + pair[X][i-1]) / dt**2 - u
+
+    e_mean += np.sum(e)**2
+    e_var += np.sum(e*e)
+  sum_error = cost0 + e_mean + e_var
   return sum_error
-  # min = x[0] * Nu / (D*D) + x[1] * (OV(D,x[2],x[3],x[4]) - V) - A
-  # return np.sum(min*min)
 
-x0 = np.array([0,0,30,50,3]) # initial guess 
-cons = [{"type": "ineq", "fun": lambda x: x[3] - x[4]}] # constraint 'h_go - h_st > 0'
-res_x = minimize(fun=optimization, x0=x0, bounds=[(0, 100), (0, 10), (0, 45), (1, 100), (1, 100)], constraints=cons) # scipy.optimize.minimize 
+x_initial = (1,1,40,50,5) # initial guess 
+cons = ({"type": "ineq", "fun": lambda x: x[3] - x[4]}) # constraint 'h_go - h_st > 0'
+bnds = ((0, 100), (0, 10), (30, 60), (1, 100), (1, 20))
+res_x = minimize(optimization, x_initial, bounds=bnds, constraints=cons, method='trust-constr', 
+                 tol=1e-10, options={'xtol': 1e-12})#'trust-constr'
 
-alpha = res_x.x[0]
-beta = res_x.x[1]
-v_max = res_x.x[2]
-h_go = res_x.x[3]
-h_st = res_x.x[4]
-
+print(res_x)
+alpha,beta,v_max,h_go,h_st = res_x.x
 print("alpha=",alpha,"beta=",beta,"v_max=",v_max,"h_go=",h_go,"h_st=",h_st)
+
+def optimization_2(x): # the OV-FTL model
+  P_V = "p_v"
+  P_X = "p_x"
+  P_L = 'p_l'
+  X = "x"
+  dt = 0.04
+
+  cost0, e_mean, e_var = 0, 0, 0
+  num_samples = 0
+
+  # ind = np.random.randint(len(pairs), size=(50))
+  num_ind = 10#len(pairs)
+  for m in range(num_ind):
+    pair = pairs[m]
+    x_reg = np.copy(pair[X]) # x_ego to be regenerated
+    v_reg = np.copy(pair[X_VELOCITY]) # v_ego to be regenerated
+    u_reg = np.copy(pair[X_ACCELERATION])
+    pr_x = pair[P_X] # x_pr
+    pr_v = pair[P_V] # v_pr
+    pr_l = pair[P_L] # length of preceding car
+    e = np.zeros(x_reg.shape)
+    num_samples += len(x_reg)
+    for i in range(len(x_reg)-1):
+      nu = pr_v[i] - v_reg[i] # nu
+      s = pr_x[i] - x_reg[i] - pr_l # s(t)
+      u_reg[i] = x[0] * nu / s*s + x[1] * (OV(s,x[2],x[3],x[4]) - v_reg[i])
+      v_reg[i+1] = v_reg[i] + dt * u_reg[i] # v(t+1) = v(t) + dt * v'(t), where v'(t) is shown in eq. 4.
+      x_reg[i+1] = x_reg[i] + dt * v_reg[i+1] # x(t+1) = x(t) + dt * x'(t) ##v_reg[i]
+
+      cost0 += (x_reg[i+1] - pair[X][i+1])**2
+
+    for i in range(1,len(x_reg)-1):
+      p_v = (pair[P_X][i] - pair[P_X][i-1]) / dt
+      v = (pair[X][i] - pair[X][i-1]) / dt
+      nu = p_v - v
+      s = pair[P_X][i] - pair[X][i] - pr_l
+      u = x[0] * nu / s*s + x[1] * (OV(s,x[2],x[3],x[4]) - v)
+      e[i] = (pair[X][i+1] - 2*pair[X][i] + pair[X][i-1]) / dt**2 - u
+
+    e_mean += np.sum(e)**2
+    e_var += np.sum(e*e)
+  sum_error = cost0 + e_mean + e_var
+  return sum_error, cost0 / num_samples, e_mean / num_samples, e_var / num_samples
+
+sum_error, cost0, e_mean, e_var = optimization_2(res_x.x)
+print("cost_0=",cost0,"e_mean=",e_mean,"e_var=",e_var)
+#####################################################################DEAP
+
+################################################################## PyGAD
+
+# # 定义目标函数
+# def fitness_func(ga_instance, solution, solution_idx):
+#     fitness = 1.0 / float(optimization(solution))
+#     return fitness
+
+# # 定义约束条件函数
+# def feasible(solution):
+#     x0, x1, x2, x3, x4, = solution
+#     return 0 <= x0 <= 100 and 0 <= x1 <= 10 and 0 <= x2 <= 45 and 0 <= x3 <= 100 and 0 <= x4 <= 100 and x4 <= x3
+
+# # 适应度函数中加入约束条件检查和惩罚
+# def eval_func(ga_instance, solution, solution_idx):
+#     if feasible(solution):
+#         return 1.0 / float(optimization(solution))
+#     else:
+#         return -1e6  # 惩罚值
+
+# # 定义问题和优化器
+# fitness_function = eval_func
+
+# num_generations = 500
+# num_parents_mating = 4
+
+# sol_per_pop = 8
+# num_genes = 5
+
+# init_range_low = 0
+# init_range_high = 50
+
+# parent_selection_type = "sss"
+# keep_parents = 1
+
+# crossover_type = "single_point"
+
+# mutation_type = "random"
+# mutation_percent_genes = 10
+
+
+# ga_instance = pygad.GA(num_generations=num_generations,
+#                        num_parents_mating=num_parents_mating,
+#                        fitness_func=fitness_function,
+#                        sol_per_pop=sol_per_pop,
+#                        num_genes=num_genes,
+#                        init_range_low=init_range_low,
+#                        init_range_high=init_range_high,
+#                        parent_selection_type=parent_selection_type,
+#                        keep_parents=keep_parents,
+#                        crossover_type=crossover_type,
+#                        mutation_type=None, 
+#                        # mutation_type,
+#                        mutation_percent_genes=mutation_percent_genes)
+
+# # 运行优化器
+# ga_instance.run()
+
+# # 打印最优解
+# solution, solution_fitness, solution_idx = ga_instance.best_solution()
+# print("Parameters of the best solution : {solution}".format(solution=solution))
+# print("Fitness value of the best solution = {solution_fitness}".format(solution_fitness=solution_fitness))
+
+# # prediction = numpy.sum(numpy.array(function_inputs)*solution)
+# # print("Predicted output based on the best solution : {prediction}".format(prediction=prediction))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # # S = D - h * V#- r
 # dt = 0.04
