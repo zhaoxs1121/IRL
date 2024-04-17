@@ -129,27 +129,7 @@ V,A,Nu,D,Pr_x_a,pairs = combine_and_compute(vf_tracks,tracks)
 def OV(x, v_max, h_go, h_st): # nonlinear sigmoidal function 'optimal velocity'
     return 0.5 * v_max * (1 + math.erf(10*(x - (h_go + h_st)/2) / (math.pi * (h_go - h_st + 0.001))))
 
-def genetic(pairs):
-  G = []
-  P_V = "p_v"
-  P_X = "p_x"
-  P_L = 'p_l'
-  X = "x"
-  for i in range(len(pairs)):
-    pair = pairs[i]
-    n = len(pair[X])
-    g = np.zeros((5,n))
-    g[0,:] = pair[X]
-    g[1,:] = pair[X_VELOCITY]
-    g[2,:] = pair[P_X]
-    g[3,:] = pair[P_V]
-    g[4,:] = np.ones((1,n))*pair[P_L]
-    G.append(g)
-  return G
-        
-# G = genetic(pairs)
-# print(len(G))
-
+# main function that calculates the cost to be minimized
 def optimization(x): # the OV-FTL model
   P_V = "p_v"
   P_X = "p_x"
@@ -157,12 +137,12 @@ def optimization(x): # the OV-FTL model
   X = "x"
   dt = 0.04
 
-  cost0 = 0
-  e_mean = 0
-  e_var = 0
+  cost0, e_mean, e_var = 0, 0, 0
 
   # ind = np.random.randint(len(pairs), size=(50))
-  num_ind = 10#len(pairs)
+  num_ind = len(pairs)#len(pairs)
+
+  # for every vehicle pair in the dataset
   for m in range(num_ind):
     pair = pairs[m]
     x_reg = np.copy(pair[X]) # x_ego to be regenerated
@@ -172,6 +152,8 @@ def optimization(x): # the OV-FTL model
     pr_v = pair[P_V] # v_pr
     pr_l = pair[P_L] # length of preceding car
     e = np.zeros(x_reg.shape)
+
+    # this loop calculates cost for every frame 
     for i in range(len(x_reg)-1):
       nu = pr_v[i] - v_reg[i] # nu
       s = pr_x[i] - x_reg[i] - pr_l # s(t)
@@ -181,6 +163,7 @@ def optimization(x): # the OV-FTL model
 
       cost0 += (x_reg[i+1] - pair[X][i+1])**2
 
+    # this loop calculates error for every frame 
     for i in range(1,len(x_reg)-1):
       p_v = (pair[P_X][i] - pair[P_X][i-1]) / dt
       v = (pair[X][i] - pair[X][i-1]) / dt
@@ -191,9 +174,9 @@ def optimization(x): # the OV-FTL model
 
     e_mean += np.sum(e)**2
     e_var += np.sum(e*e)
-  sum_error = cost0 + e_mean + e_var
-  return sum_error
+  return cost0 + e_mean + e_var
 
+# the optimization starts here 
 x_initial = (1,1,40,50,5) # initial guess 
 cons = ({"type": "ineq", "fun": lambda x: x[3] - x[4]}) # constraint 'h_go - h_st > 0'
 bnds = ((0, 100), (0, 10), (30, 60), (1, 100), (1, 20))
@@ -204,7 +187,8 @@ print(res_x)
 alpha,beta,v_max,h_go,h_st = res_x.x
 print("alpha=",alpha,"beta=",beta,"v_max=",v_max,"h_go=",h_go,"h_st=",h_st)
 
-def optimization_2(x): # the OV-FTL model
+# here I run the function again to get the cost and error from the results
+def optimization_2(x):
   P_V = "p_v"
   P_X = "p_x"
   P_L = 'p_l'
@@ -215,7 +199,7 @@ def optimization_2(x): # the OV-FTL model
   num_samples = 0
 
   # ind = np.random.randint(len(pairs), size=(50))
-  num_ind = 10#len(pairs)
+  num_ind = len(pairs)#len(pairs)
   for m in range(num_ind):
     pair = pairs[m]
     x_reg = np.copy(pair[X]) # x_ego to be regenerated
