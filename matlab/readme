@@ -1,3 +1,9 @@
 main function is nonlinear_optimization.m.
 
 annotations are written in cost_func.m.
+
+cost_func.m calculates cost and error using OV model. 
+show_cost.m calculates the optimal cost and error with optimized results.
+
+linear_cost_func.m calculates cost and error using linear model. 
+linear_show_cost.m calculates the optimal cost and error with optimized results.
