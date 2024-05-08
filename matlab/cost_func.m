@@ -15,7 +15,7 @@ e_var = 0;
 % data is exported from python, with shape of (n,6). 6 columns correspond
 % to x/v/a of the ego vehicle, x/v/length of the preceeding vehicle. 
 % Different pairs are seperated by a zero row. 
-Data_arrays = readmatrix('Data_arrays.csv');
+Data_arrays = readmatrix('../data_inter/Data_arrays.csv');
 [m,~] = size(Data_arrays);
 
 for j = 1:m 
@@ -50,12 +50,13 @@ for j = 1:m
             nu_error = p_v(i) - v(i);
             s_error = p_x(i) - x(i) - p_l;
             u_error = alpha * nu_error / s_error^2 + beta * (OV(s_error,v_max,h_go,h_st) - v(i));
-            e(i) = a(i) -u_error;
+            e(i) = a(i) - u_error;
         end
         e_mean = e_mean + sum(e);
         e_var = e_var + sum(e.*e);
     end
 end
+
 min = cost + e_var + e_mean^2;
 end
 

@@ -2,6 +2,7 @@ function [cost,e_var,e_mean]=linear_show_cost(X)
 kp = X(1,1);
 kd = X(1,2);
 h = X(1,3);
+r = X(1,4);
 
 count = 0;
 fast = 0;
@@ -11,7 +12,7 @@ cost = 0;
 e_mean = 0;
 e_var = 0;
 
-Data_arrays = readmatrix('Data_arrays.csv');
+Data_arrays = readmatrix('../data_inter/Data_arrays.csv');
 [m,~] = size(Data_arrays);
 
 for j = 1:m 
@@ -35,7 +36,8 @@ for j = 1:m
             % cost calculation
             s = p_x(i) - x_reg - p_l;
             nu = p_v(i) - v_reg;
-            u_reg = kp * (s - h * v_reg) + kd * nu;
+%             u_reg = kp * (s - h * v_reg) + kd * nu;
+            u_reg = kp * (s - h * v_reg - r) + kd * nu;
             v_reg = v_reg + dt * u_reg;
             x_reg = x_reg + dt * v_reg;
 
@@ -44,8 +46,9 @@ for j = 1:m
             % error calculation 
             s_error = p_x(i) - x(i) - p_l;
             nu_error = p_v(i) - v(i);
-            u_error = kp * (s_error - h * v_reg) + kd * nu_error;
-            e(i) = a(i) -u_error;
+%             u_error = kp * (s_error - h * v_reg) + kd * nu_error;
+            u_error = kp * (s_error - h * v_reg - r) + kd * nu_error;
+            e(i) = a(i) - u_error;
         end
         e_mean = e_mean + sum(e);
         e_var = e_var + sum(e.*e);

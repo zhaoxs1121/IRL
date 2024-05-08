@@ -1,356 +1,380 @@
 import os
-import sys
-import pickle
-import argparse
 import numpy as np
-
 import matplotlib.pyplot as plt
-from scipy import stats
 from scipy.optimize import curve_fit
-from scipy.optimize import least_squares
 import math
 from matplotlib import cm
-from matplotlib.ticker import LinearLocator
-from mpl_toolkits.mplot3d import Axes3D
 from scipy.stats import norm
-import quadprog
-import cvxopt
-from scipy import linalg as la
-from scipy import special
-import pygad
 
 from data_management.read_csv import *
 
+
 def filter_vf_tracks(tracks):
-  """
-  This method reads the tracks file from highD data.
+    """
+    This method filters the vehicle-following behavior from input tracks.
 
-  :param arguments: the parsed arguments for the program containing the input path for the tracks csv file.
-  :return: a list containing all tracks as dictionaries.
-  """
-  vf_tracks = []
+    :param arguments: input tracks.
+    :return: vf_tracks -  a list containing tracks contaning vehicle-following behavior as dictionaries.
+    """
+    # Declare and initialize the vf_tracks
+    vf_tracks = []
+    for track in tracks:
+        dhw = track[DHW]
+        pr_id = track[PRECEDING_ID][0] - 1
+        if not (np.all(dhw == 0)) and (track[BBOX][0][2] < 6) and (
+                track[LANE_ID][-1]
+                == track[LANE_ID][0]) and (tracks[pr_id][LANE_ID][-1]
+                                           == tracks[pr_id][LANE_ID][0]):
+            vf_dhw = dhw[dhw > 1]
+            vf_dhw = vf_dhw[vf_dhw < 50]
+            if (np.count_nonzero(vf_dhw) == np.count_nonzero(dhw)) and (
+                    tracks[pr_id][BBOX][0][2] < 6) and (np.count_nonzero(dhw)
+                                                        > 275):
+                vf_tracks.append(track)
+    return vf_tracks
 
-  for track in tracks:
-    dhw = track[DHW]
-    pr_id = track[PRECEDING_ID][0]-1
-    if not(np.all(dhw==0)) and (track[BBOX][0][2]<6) and (track[LANE_ID][-1] == track[LANE_ID][0]) and (tracks[pr_id][LANE_ID][-1] == tracks[pr_id][LANE_ID][0]):
-      vf_dhw = dhw[dhw>1]
-      vf_dhw = vf_dhw[vf_dhw<50]
-      if (np.count_nonzero(vf_dhw) == np.count_nonzero(dhw)) and (tracks[pr_id][BBOX][0][2]<6) and (np.count_nonzero(dhw)>275):
-        vf_tracks.append(track)
-  return vf_tracks
 
-def OV(x, v_max, h_go, h_st): # nonlinear sigmoidal function 'optimal velocity'
-    return 0.5 * v_max * (1 + special.erf(10*(x - (h_go + h_st)/2) / (math.pi * (h_go - h_st))))
+def extract_features(vf_tracks, tracks):
+    NU = "nu"
+    P_V = "p_v"
+    P_X = "p_x"
+    P_L = 'p_l'
+    X = "x"
+    pairs = []  #save information of every vehicle pair
+    count = 0
+    frame_skip = 10
+    for track in vf_tracks:
+        pr_track = tracks[track[PRECEDING_ID][0] - 1]
+        frame = np.intersect1d(track[FRAME], pr_track[FRAME])  #[frame_skip:]
+        x = track[BBOX][:, 0][frame_skip:len(frame)]
+        v = track[X_VELOCITY][frame_skip:len(frame)]
+        a = track[X_ACCELERATION][frame_skip:len(frame)]
+        dhw = track[DHW][frame_skip:len(frame)]
+        pr_x = pr_track[BBOX][:, 0][-len(frame) + frame_skip:]
+        pr_v = pr_track[X_VELOCITY][-len(frame) + frame_skip:]
+        # pr_x_a = pr_track[X_VELOCITY][-len(frame):] - pr_track[X_VELOCITY][-len(frame)-1:-1]
+        pr_a = pr_track[X_ACCELERATION][-len(frame) + frame_skip:]
 
-def combine_and_compute(vf_tracks,tracks):
-  NU = "nu"
-  P_X_V = "p_x_v"
-  P_X = "p_x"
-  P_L = 'p_l'
-  X = "x"
-  pairs = []#save information of every vehicle pair
-  count = 0
-  dt = 0.04
-  for track in vf_tracks:
-    pr_track = tracks[track[PRECEDING_ID][0]-1]
-    frame = np.intersect1d(track[FRAME],pr_track[FRAME])
-    x = track[BBOX][:,0][:len(frame)]
-    x_v = track[X_VELOCITY][:len(frame)]
-    x_a = track[X_ACCELERATION][:len(frame)]
-    dhw = track[DHW][:len(frame)]
-    pr_x = pr_track[BBOX][:,0][-len(frame):]
-    pr_x_v = pr_track[X_VELOCITY][-len(frame):]
-    # pr_x_a = pr_track[X_VELOCITY][-len(frame):] - pr_track[X_VELOCITY][-len(frame)-1:-1]
-    pr_x_a = pr_track[X_ACCELERATION][-len(frame):]
+        nu = pr_v - v
 
-    nu = pr_x_v - x_v
+        if track[LANE_ID][0] < 4:
+            x = -x
+            a = -a
+            nu = -nu
+            v = -v
+            pr_x = -pr_x
+            pr_a = -pr_a
+            pr_v = -pr_v
 
-    # x_reg = np.copy(x)
-    # x_v_reg = np.copy(x_v)
-    # for i in range(len(frame)-1):
-    #   x_v_reg[i+1] = x_v_reg[i] + dt * 
-    #   x_reg[i+1] = 
-
-    
-    if track[LANE_ID][0] < 4:
-      x = -x
-      x_a = -x_a
-      nu = -nu
-      x_v = -x_v
-      pr_x = -pr_x
-      pr_x_a = -pr_x_a
-      pr_x_v = -pr_x_v
-
-    pair = {TRACK_ID: pr_track[TRACK_ID]*100+track[TRACK_ID],  
+        pair = {
+            TRACK_ID: pr_track[TRACK_ID] * 100 + track[TRACK_ID],
             FRAME: frame,
             X: x,
-            X_VELOCITY: x_v,
-            X_ACCELERATION: x_a,
+            X_VELOCITY: v,
+            X_ACCELERATION: a,
             DHW: dhw,
             NU: nu,
             PRECEDING_ID: track[PRECEDING_ID][:len(frame)],
             LANE_ID: track[LANE_ID][:len(frame)],
-            P_L: float(pr_track[BBOX][0,2]),
+            P_L: float(pr_track[BBOX][0, 2]),
             P_X: pr_x,
-            P_X_V: pr_x_v
-            }
-    pairs.append(pair)
+            P_V: pr_v
+        }
+        pairs.append(pair)
 
-    if count == 0:
-      V = x_v
-      A = x_a
-      Nu = nu
-      D = dhw
-      Pr_x_a = pr_x_a
-      count = 1
-    elif np.all(nu>-4) and np.all(nu<4) and np.all(dhw>10) and np.all(dhw<49):
-      V = np.concatenate((V,x_v))
-      A = np.concatenate((A,x_a))
-      Nu = np.concatenate((Nu,nu))
-      D = np.concatenate((D,dhw))
-      Pr_x_a = np.concatenate((Pr_x_a,pr_x_a))
+        if count == 0:
+            Vel = v
+            Acc = a
+            Nu = nu
+            Dhw = dhw
+            Pr_x_a = pr_a
+            count = 1
+        elif np.all(nu > -4) and np.all(nu < 4) and np.all(
+                dhw > 10) and np.all(dhw < 49):
+            Vel = np.concatenate((Vel, v))
+            Acc = np.concatenate((Acc, a))
+            Nu = np.concatenate((Nu, nu))
+            Dhw = np.concatenate((Dhw, dhw))
+            Pr_x_a = np.concatenate((Pr_x_a, pr_a))
 
-  # print(pr_x_a)
-  return V,A,Nu,D,Pr_x_a,pairs
+    # print(pr_x_a)
+    return Vel, Acc, Nu, Dhw, Pr_x_a, pairs
 
-def combine_and_compute_art(vf_tracks,tracks):
-  NU = "nu"
-  P_X_V = "p_x_v"
-  pairs = []#save information of every vehicle pair
-  count = 0
-  dt = 0.04
 
-  for track in vf_tracks:
-    pr_track = tracks[track[PRECEDING_ID][0]-1]
-    frame = np.intersect1d(track[FRAME],pr_track[FRAME])
-    x = track[BBOX][:,0][:len(frame)]
-    x_v = track[X_VELOCITY][:len(frame)]
-    x_a = track[X_ACCELERATION][:len(frame)]
-    x_v_art = np.copy(x_v)
-    x_a_art = np.copy(x_a)
-    for i in range(len(x)-1):
-      x_v_art[i+1] = (x[i+1]-x[i]) / dt
-      x_a_art[i+1] = (x_v_art[i+1]-x_v_art[i]) / dt
+def extract_features_gen(vf_tracks, tracks):
+    NU = "nu"
+    P_X_V = "p_x_v"
+    pairs = []  #save information of every vehicle pair
+    count = 0
+    dt = 0.04
+    frame_skip = 10
 
-    dhw = track[DHW][:len(frame)]
+    for track in vf_tracks:
+        pr_track = tracks[track[PRECEDING_ID][0] - 1]
+        frame = np.intersect1d(track[FRAME], pr_track[FRAME])
 
-    pr_x = pr_track[BBOX][:,0][-len(frame):]
-    pr_x_v = pr_track[X_VELOCITY][-len(frame):]
-    pr_x_a = pr_track[X_ACCELERATION][-len(frame):]
-    pr_x_v_art = np.copy(pr_x_v)
-    pr_x_a_art = np.copy(pr_x_a)
-    for i in range(len(x)-1):
-      pr_x_v_art[i+1] = (pr_x[i+1]-pr_x[i]) / dt
-      pr_x_a_art[i+1] = (pr_x_v_art[i+1]-pr_x_v_art[i]) / dt
+        x = track[BBOX][:, 0][frame_skip:len(frame)]
+        v = track[X_VELOCITY][frame_skip:len(frame)]
+        a = track[X_ACCELERATION][frame_skip:len(frame)]
+        dhw = track[DHW][frame_skip:len(frame)]
+        pr_x = pr_track[BBOX][:, 0][-len(frame) + frame_skip:]
+        pr_v = pr_track[X_VELOCITY][-len(frame) + frame_skip:]
+        pr_a = pr_track[X_ACCELERATION][-len(frame) + frame_skip:]
 
-    nu = pr_x_v - x_v
-    nu_art = pr_x_v_art - x_v_art
-    
-    
-    if track[LANE_ID][0] < 4:
-      x_a = -x_a
-      nu = -nu
-      x_v = -x_v
-      pr_x_a = -pr_x_a
-      pr_x_v = -pr_x_v
+        v_art = np.copy(v)
+        a_art = np.copy(a)
+        for i in range(len(x) - 1):
+            v_art[i + 1] = (x[i + 1] - x[i]) / dt
+            a_art[i + 1] = (v_art[i + 1] - v_art[i]) / dt
 
-      x_a_art = -x_a_art
-      nu_art = -nu_art
-      x_v_art = -x_v_art
-      pr_x_a_art = -pr_x_a_art
-      pr_x_v_art = -pr_x_v_art
+        pr_v_art = np.copy(pr_v)
+        pr_a_art = np.copy(pr_a)
+        for i in range(len(x) - 1):
+            pr_v_art[i + 1] = (pr_x[i + 1] - pr_x[i]) / dt
+            pr_a_art[i + 1] = (pr_v_art[i + 1] - pr_v_art[i]) / dt
 
-    pair = {TRACK_ID: pr_track[TRACK_ID]*100+track[TRACK_ID],  
+        nu = pr_v - v
+        nu_art = pr_v_art - v_art
+
+        if track[LANE_ID][0] < 4:
+            a = -a
+            nu = -nu
+            v = -v
+            pr_a = -pr_a
+            pr_v = -pr_v
+
+            a_art = -a_art
+            nu_art = -nu_art
+            v_art = -v_art
+            pr_a_art = -pr_a_art
+            pr_v_art = -pr_v_art
+
+        v = v_art
+        a = a_art
+        nu = nu_art
+        dhw = dhw
+        pr_a = pr_a_art
+
+        pair = {
+            TRACK_ID: pr_track[TRACK_ID] * 100 + track[TRACK_ID],
             FRAME: frame,
-            X_VELOCITY: x_v,
-            X_ACCELERATION: x_a,
+            X_VELOCITY: v,
+            X_ACCELERATION: a,
             DHW: dhw,
             NU: nu,
             PRECEDING_ID: track[PRECEDING_ID][:len(frame)],
             LANE_ID: track[LANE_ID][:len(frame)],
-            P_X_V: pr_x_v
-            }
-    pairs.append(pair)
+            P_X_V: pr_v
+        }
+        pairs.append(pair)
 
-    # x_v = x_v_art
-    # x_a = x_a_art
-    # nu = nu_art
-    # dhw = dhw
-    # pr_x_a = pr_x_a_art
+        if count == 0:
+            Vel = v
+            Acc = a
+            Nu = nu
+            Dhw = dhw
+            Pr_a = pr_a
+            count = 1
+        elif np.all(nu > -4) and np.all(nu < 4) and np.all(
+                dhw > 10) and np.all(dhw < 49):
+            Vel = np.concatenate((Vel, v))
+            Acc = np.concatenate((Acc, a))
+            Nu = np.concatenate((Nu, nu))
+            Dhw = np.concatenate((Dhw, dhw))
+            Pr_a = np.concatenate((Pr_a, pr_a))
 
-    if count == 0:
-      V = x_v
-      A = x_a
-      Nu = nu
-      D = dhw
-      Pr_x_a = pr_x_a
-      count = 1
-    elif np.all(nu>-4) and np.all(nu<4) and np.all(dhw>10) and np.all(dhw<49):
-      V = np.concatenate((V,x_v))
-      A = np.concatenate((A,x_a))
-      Nu = np.concatenate((Nu,nu))
-      D = np.concatenate((D,dhw))
-      Pr_x_a = np.concatenate((Pr_x_a,pr_x_a))
+    # print(frame)
+    # print(len(frame))
+    # print(v_art)
+    # print(a_art)
 
-  # print(frame)
-  # print(len(frame))
-  # print(x_v_art)
-  # print(x_a_art)
+    return Vel, Acc, Nu, Dhw, Pr_a, pairs
 
-  return V,A,Nu,D,Pr_x_a,pairs
 
-def dynamics(x,Ax,Bx,kp,kd,d_sigma):
-  w = norm.rvs(0, d_sigma, size=1)
-  return Ax @ x + Bx * (kp*x[0]+kd*x[1]+w)
+def dynamics(x, Ax, Bx, kp, kd, d_sigma):
+    w = 0  #norm.rvs(0, d_sigma, size=1)
+    return Ax @ x + Bx * (kp * x[0] + kd * x[1] + w)
 
-def error_vis_2(data):
-  mu, std = stats.norm.fit(data)
-
-  x = np.linspace(data.min(), data.max(), 100)
-  pdf = stats.norm.pdf(x, mu, std)
-
-  plt.hist(data, bins=30, density=True, alpha=0.6, color='b')
-  plt.plot(x, pdf, 'r-', lw=2)
-  plt.xlabel('values')
-  plt.ylabel('Probability')
-  plt.title('Histogram : $\mu$=' + str(round(mu,4)) + ' $\sigma=$'+str(round(std,4)))
-  plt.show()
 
 def error_vis(x):
-  n, bins, patches = plt.hist(x, 100, density=1, alpha=0.75)
-  y = norm.pdf(bins, np.mean(x), np.std(x))# fit normal distribution  
+    n, bins, patches = plt.hist(x, 100, density=1, alpha=0.75)
+    y = norm.pdf(bins, np.mean(x), np.std(x))  # fit normal distribution
 
-  plt.grid(True)
-  plt.plot(bins, y, 'r--')
-  plt.xlim((-2, 2))
-  plt.ylim((0, 1))
-  plt.xticks(np.arange(-2, 2.01, 1),fontproperties = 'Times New Roman', size = 28)
-  plt.yticks(np.arange(0, 1.01, 0.2),fontproperties = 'Times New Roman', size = 28)
-  plt.xlabel('values',fontdict={'family' : 'Times New Roman', 'size': 32})
-  plt.ylabel('Probability',fontdict={'family' : 'Times New Roman', 'size': 32})
-  plt.title('$\sigma=$'+str(round(np.std(x),4)),fontproperties = 'Times New Roman', size = 30)
-  plt.show()
+    plt.grid(True)
+    plt.plot(bins, y, 'r--')
+    plt.xlim((-2, 2))
+    plt.ylim((0, 1))
+    plt.xticks(np.arange(-2, 2.01, 1),
+               fontproperties='Times New Roman',
+               size=28)
+    plt.yticks(np.arange(0, 1.01, 0.2),
+               fontproperties='Times New Roman',
+               size=28)
+    plt.xlabel('values', fontdict={'family': 'Times New Roman', 'size': 32})
+    plt.ylabel('Probability',
+               fontdict={
+                   'family': 'Times New Roman',
+                   'size': 32
+               })
+    plt.title('$\sigma=$' + str(round(np.std(x), 4)),
+              fontproperties='Times New Roman',
+              size=30)
+    plt.show()
 
-def error_calculate_and_vis(pairs,kp,kd,h,Ax,Bx,Dx):
-  NOISE = "noise"
-  ERROR = "error"
-  NU = "nu"
-  P_X_V = "p_x_v"   
-  E = "relative_pos"
-  count_2 = 0
-  count_3 = 0
-  for pair in pairs:
-    duration = len(pair[FRAME])
-    pair[E] = pair[DHW] - h * pair[X_VELOCITY]# - r
-    count = 0
-    
-    for j in range(duration-1):
-      error = np.array([[pair[E][j+1]],[pair[NU][j+1]]]) - Ax@np.array([[pair[E][j]],[pair[NU][j]]]) - Bx * (kp*pair[E][j]+kd*pair[NU][j]) - Dx*(pair[P_X_V][j+1]-pair[P_X_V][j])
-      disturbance = pair[P_X_V][j+1]-pair[P_X_V][j]
-      if count_2 == 0:
-        error_all = error
-        disturbance_all = disturbance
-        count_2 = 1
-      else:
-        error_all = np.hstack((error_all,error))
-        disturbance_all = np.hstack((disturbance_all,disturbance))
-      
-      if count == 0:
-        Error = error
-        count = 1
-      else:
-        Error = np.hstack((Error,error))
-        
-    noise = kp*pair[DHW]-kp*h*pair[X_VELOCITY]+kd*pair[NU]-pair[X_ACCELERATION]
-    if count_3 == 0:
-      Noise = noise
-      count_3 = 1
-    else:
-      Noise = np.concatenate((Noise,noise))
 
-    pair[ERROR] = Error
-    pair[NOISE] = Noise
+def error_vis_3(data):
+    hist, bins = np.histogram(data, bins=100, density=True)
+    bin_centers = (bins[:-1] + bins[1:]) / 2
 
-  # error_mu = [np.mean(error_all[0,:]),np.mean(error_all[1,:])]
-  # error_sigma = [np.std(error_all[0,:]),np.std(error_all[1,:])]
-  noise_cov = np.cov(Noise)
-  n_mu = np.mean(Noise)
-  # print(n_mu,noise_cov)
+    def normal_distribution(x, mean, std_dev):
+        return norm.pdf(x, loc=mean, scale=std_dev)
 
-  #print('noise_cov',noise_cov)
-  #print('error_mu',error_mu,'error_sigma',error_sigma)
+    params, covariance = curve_fit(normal_distribution,
+                                   bin_centers,
+                                   hist,
+                                   p0=[np.mean(data),
+                                       np.std(data)])
 
-  Gamma = (noise_cov * Bx@Bx)**(-1)
-  # print('Gamma',Gamma)
+    plt.hist(data,
+             bins=200,
+             density=True,
+             alpha=0.6,
+             color='royalblue',
+             label='Data Histogram')
 
-  mu = np.mean(error_all[0,:])
-  sigma = np.std(error_all[0,:])
+    xmin, xmax = plt.xlim()
+    x = np.linspace(xmin, xmax, 1000)
+    fit_mean, fit_std_dev = params
+    pdf = normal_distribution(x, fit_mean, fit_std_dev)
+    plt.plot(x, pdf, 'r', linewidth=2, label='Fitted Normal Distribution')
 
-  filter = (error_all[0,:]>mu-3*sigma) & (error_all[0,:]<mu+3*sigma)
-  error_all = np.vstack((error_all[0,:][filter],error_all[1,:][filter]))
+    plt.grid(True)
+    plt.xlabel('Value', fontdict={'family': 'Times New Roman', 'size': 32})
+    plt.ylabel('Probability Density',
+               fontdict={
+                   'family': 'Times New Roman',
+                   'size': 32
+               })
+    plt.xlim((-1.5, 1.5))
+    plt.ylim((0, 1.4))
+    plt.xticks(np.arange(-1.5, 1.51, 0.75),
+               fontproperties='Times New Roman',
+               size=28)
+    plt.yticks(np.arange(0, 1.41, 0.2),
+               fontproperties='Times New Roman',
+               size=28)
+    # plt.title(r'$\xi_{i,1},\sigma=$'+str(round(np.std(data),4)),size = 15)#,fontproperties = 'Times New Roman', size = 30)
+    plt.title(r'$\xi_{i}$', size=32)
+    plt.rc('legend', fontsize=28)
+    # plt.legend()
+    plt.show()
 
-  mu_dis = np.mean(disturbance_all)
-  sigma_dis = np.std(disturbance_all)
-  filter_dis = (disturbance_all>mu_dis-3*sigma_dis) & (disturbance_all<mu_dis+3*sigma_dis)
-  # disturbance_all = disturbance_all[filter_dis]
-  # error_vis_2(disturbance_all)
-  # print(disturbance_all.shape)
-  # error_vis(error_all[0,:])
-  # error_vis(error_all[1,:])
-  error_vis(error_all[0,:]/Bx[0])
-  error_vis(error_all[1,:]/Bx[1])
 
-  # B1d = error_all[0,:]/2 + error_all[1,:]*Bx[0,0]/(2*Bx[1,0])
-  # B2d = error_all[0,:]*Bx[1,0]/(2*Bx[0,0]) + error_all[1,:]/2
-  # d = (c*error_all[0,:]/(Bx[0]) + error_all[1,:]/(Bx[1]))*0.7
-  d = (error_all[0,:]/(Bx[0]) + error_all[1,:]/(Bx[1]))*0.6
-  # d_mu = c*0.5*np.mean(error_all[0,:])+np.mean(error_all[1,:])*0.5
-  # d_sigma = np.std(error_all[1,:])
-  d_mu = np.mean(d)
-  d_sigma = np.std(d)
-  # print('d_mu',d_mu,'d_sigma',d_sigma)
-  # print('d_mu',np.mean(d),'d_sigma',np.std(d))
-  error_vis(d)
-  # error_vis(B1d)
-  # error_vis(B2d)
-  return Gamma, d_mu, d_sigma
+def error_cal(pairs, kp, kd, h, Ax, Bx, Dx):
+    NOISE = "noise"
+    ERROR = "error"
+    NU = "nu"
+    P_V = "p_v"
+    SE = "spacing_error"
+    count_2 = 0
+    count_3 = 0
+    for pair in pairs:
+        duration = len(pair[X])
+        pair[SE] = pair[DHW] - h * pair[X_VELOCITY]  # - r
+        count = 0
 
-def quadprog_solve_qp(P, q, G, h, A=None, b=None):
-  qp_G = .5 * (P + P.T)   # make sure P is symmetric
-  qp_a = -q
-  if A is not None:
-    qp_C = -np.vstack([A, G]).T
-    qp_b = -np.hstack([b, h])
-    meq = A.shape[0]
-  else:  # no equality constraint
-    qp_C = -G.T
-    qp_b = -h
-    meq = 0
-  return quadprog.solve_qp(qp_G, qp_a, qp_C, qp_b, meq)[0]
+        for j in range(duration - 1):
+            State_cur = np.array([pair[SE][j + 1], pair[NU][j + 1]])
+            State_pre = np.array([pair[SE][j], pair[NU][j]])
+            error = State_cur - Ax @ State_pre - Bx * (
+                kp * pair[SE][j] + kd * pair[NU][j]) - Dx * (pair[P_V][j + 1] -
+                                                             pair[P_V][j])
+            # disturbance = pair[P_V][j+1]-pair[P_V][j]
+            if count_2 == 0:
+                error_all = np.reshape(error, [2, 1])
+                count_2 = 1
+            else:
+                error_all = np.hstack((error_all, np.reshape(error, [2, 1])))
 
-def cvxopt_solve_qp(P, q, G, h, A=None, b=None):
-  P = .5 * (P + P.T)  # make sure P is symmetric
-  args = [cvxopt.matrix(P), cvxopt.matrix(q)]
-  args.extend([cvxopt.matrix(G), cvxopt.matrix(h)])
-  if A is not None:
-      args.extend([cvxopt.matrix(A), cvxopt.matrix(b)])
-  sol = cvxopt.solvers.qp(*args)
-  if 'optimal' not in sol['status']:
-      return None
-  return np.array(sol['x']).reshape((P.shape[1],))
+            if count == 0:
+                Error = np.reshape(error, [2, 1])
+                count = 1
+            else:
+                Error = np.hstack((Error, np.reshape(error, [2, 1])))
 
-def kernel(x1,x2):
-  return (1+x1@x2)**2###############
+        noise = kp * pair[DHW] - kp * h * pair[X_VELOCITY] + kd * pair[
+            NU] - pair[X_ACCELERATION]
+        if count_3 == 0:
+            Noise = noise
+            count_3 = 1
+        else:
+            Noise = np.concatenate((Noise, noise))
 
-def value_func(x,x_t,alphas,N_data):
-  sum = 0
-  for i in range(N_data):
-    sum += alphas[i]*kernel(x,x_t[i])
-  return sum
+        pair[ERROR] = Error
+        pair[NOISE] = Noise
 
-def quad_value_func(x,X):
-  return x.T@X@x
+    # error_mu = [np.mean(error_all[0,:]),np.mean(error_all[1,:])]
+    # error_sigma = [np.std(error_all[0,:]),np.std(error_all[1,:])]
+    noise_cov = np.cov(Noise)
+    n_mu = np.mean(Noise)
+    # print(n_mu,noise_cov)
+
+    Gamma = (noise_cov * Bx @ Bx)**(-1)
+    # print('Gamma',Gamma)
+
+    # print(error_all.shape)
+    mu = np.mean(error_all[0, :])
+    sigma = np.std(error_all[0, :])
+    filter = (error_all[0, :] > mu - 3 * sigma) & (error_all[0, :]
+                                                   < mu + 3 * sigma)
+    error_all = np.vstack((error_all[0, :][filter], error_all[1, :][filter]))
+    # print(error_all[1,:100])
+
+    # error_vis(error_all[0,:])
+    # error_vis(error_all[1,:])
+    # error_vis(error_all[0,:]/Bx[0])
+    # error_vis(error_all[1,:]/Bx[1])
+    # error_vis_3(error_all[0,:]/Bx[0])
+    # error_vis_3(error_all[1,:]/Bx[1])
+
+    # B1d = error_all[0,:]/2 + error_all[1,:]*Bx[0,0]/(2*Bx[1,0])
+    # B2d = error_all[0,:]*Bx[1,0]/(2*Bx[0,0]) + error_all[1,:]/2
+    # d = (c*error_all[0,:]/(Bx[0]) + error_all[1,:]/(Bx[1]))*0.7
+    d = (error_all[0, :] / (Bx[0]) + error_all[1, :] / (Bx[1])) * 0.6
+    # d_mu = c*0.5*np.mean(error_all[0,:])+np.mean(error_all[1,:])*0.5
+    # d_sigma = np.std(error_all[1,:])
+    d_mu = np.mean(d)
+    d_sigma = np.std(d)
+    # print('d_mu',d_mu,'d_sigma',d_sigma)
+    # print('d_mu',np.mean(d),'d_sigma',np.std(d))
+    error_vis_3(d)
+    # error_vis(B1d)
+    # error_vis(B2d)
+    return Gamma, d_mu, d_sigma
+
+
+def kernel(x1, x2):
+    return (1 + x1 @ x2)**2
+
+
+def value_func(x, x_t, alphas, N_data):
+    sum = 0
+    for i in range(N_data):
+        sum += alphas[i] * kernel(x, x_t[i])
+    return sum
+
+
+def quad_value_func(x1, x2):
+    return x1.T @ x2 @ x1
+
+
+def OV(x, v_max, h_go, h_st):
+    """
+    This function is the nonlinear sigmoidal function 'optimal velocity'
+    """
+    return 0.5 * v_max * (1 + math.erf(10 * (x - (h_go + h_st) / 2) /
+                                       (math.pi * (h_go - h_st + 0.001))))
+
 
 # def derivative_v(x,x_t,alphas,N_data):
 #   sum = 0
@@ -362,40 +386,301 @@ def quad_value_func(x,X):
 #   de = derivative_v(Ax@x,x_all,alphas,N_data)
 #   return -beta*de@Bx
 
-def vf_plot(x_t,alphas,N_data,X_idare=0,function='kernel',three_d=1,contour=1):
-  # X = np.linspace(-35,20,200) #0.5 20*20
-  # Y = np.linspace(-7,7,200) #0.1 20*20
-  n = 100
-  X = np.linspace(-20,20,n) #0.5 20*20
-  Y = np.linspace(-5,5,n) #0.1 20*20
-  X,Y = np.meshgrid(X,Y)
-  Z = np.zeros((n,n))
 
-  if function == 'kernel':
-    for i in range(n):
-      for j in range(n):
-        Z[j,i] = value_func(np.array([X[0,i],Y[j,0]]),x_t,alphas,N_data)
-  if function == 'quad':
-    for i in range(n):
-      for j in range(n):
-        Z[j,i] = quad_value_func(np.array([X[0,i],Y[j,0]]),X_idare)
+def vf_plot(x_t,
+            alphas,
+            N_data,
+            X_idare=0,
+            function='kernel',
+            three_d=1,
+            contour=1):
+    # x = np.linspace(-35,20,200) #0.5 20*20
+    # y = np.linspace(-7,7,200) #0.1 20*20
+    n = 100
+    x = np.linspace(-20, 20, n)  #0.5 20*20
+    y = np.linspace(-5, 5, n)  #0.1 20*20
+    x, y = np.meshgrid(x, y)
+    z = np.zeros((n, n))
 
-  if three_d==1:
-    fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
-    surf = ax.plot_surface(X, Y, Z, cmap=cm.coolwarm, linewidth=0, antialiased=False)
-    ax.zaxis.set_major_formatter('{x:.02f}')
-    # Add a color bar which maps values to colors.
-    fig.colorbar(surf, shrink=0.5, aspect=5)
-    plt.show()
+    if function == 'kernel':
+        for i in range(n):
+            for j in range(n):
+                z[j, i] = value_func(np.array([x[0, i], y[j, 0]]), x_t, alphas,
+                                     N_data)
+    if function == 'quad':
+        for i in range(n):
+            for j in range(n):
+                z[j, i] = quad_value_func(np.array([x[0, i], y[j, 0]]),
+                                          X_idare)
 
-  if contour==1:
-    # plt.contourf(X,Y,Z)
+    if three_d == 1:
+        fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
+        surf = ax.plot_surface(x,
+                               y,
+                               z,
+                               cmap=cm.coolwarm,
+                               linewidth=0,
+                               antialiased=False)
+        ax.zaxis.set_major_formatter('{x:.02f}')
+        # Add a color bar which maps values to colors.
+        fig.colorbar(surf, shrink=0.5, aspect=5)
+        plt.show()
 
+    if contour == 1:
+        # for x in x_t:
+        #   if x[0]<20:
+        #     plt.scatter(x[0], x[1], s = 30, c = 'b')
+        C = plt.contour(x, y, z, levels=[10**i for i in range(-4, 8)])
+        plt.clabel(C, inline=True, fontsize=10)
+        plt.show()
+
+    # print(value_func(np.array([-20,0]),x_t,alphas,N_data))
+
+
+def scatter_plot(Se, Nu):
+    fig, axes = plt.subplots()
+    plt.scatter(Se, Nu, s=10)
     # for x in x_t:
-    #   if x[0]<20:
-    #     plt.scatter(x[0], x[1], s = 30, c = 'b')
-    C=plt.contour(X,Y,Z,levels=[10**i for i in range(-4,8)])
-    plt.clabel(C, inline=True, fontsize=10)
+    #   plt.scatter(x[0], x[1], s = 30, c = 20)
+    plt.xticks(np.arange(-20, 25, 5),
+               fontproperties='Times New Roman',
+               size=24)
+    plt.yticks(np.arange(-4, 5, 1), fontproperties='Times New Roman', size=24)
+    plt.xlabel('spacing error e$_i$ [m]',
+               fontdict={
+                   'family': 'Times New Roman',
+                   'size': 40
+               })
+    plt.ylabel('relative velocity '
+               r'$\nu_i$ [m/s]',
+               fontdict={
+                   'family': 'Times New Roman',
+                   'size': 40
+               })
+    # axes.set_xticks(np.linspace(-35,20,221))
+    # axes.set_yticks(np.linspace(-7,7,201))
+    axes.grid(alpha=0.3)
     plt.show()
-  
-  # print(value_func(np.array([-20,0]),x_t,alphas,N_data))
+
+
+def QP(x_cur, x_next, pr_a, d_sigma, random_size, A_mat, B_mat, D_mat, beta,
+       lambda_v, lambda_c, lambda_b):
+    """
+    first version of the method which constructs every matrices used in the QP. 
+    """
+    N_data = len(x_cur)
+    P_mat = np.zeros((N_data, N_data))
+    q = np.zeros((N_data))
+    noise = norm.rvs(loc=0, scale=d_sigma, size=(N_data, random_size))
+    # noise = []
+    # for i in range(N_data):
+    #   w = norm.rvs(0, d_sigma, size=random_size)
+    #   noise.append(w)
+
+    for i in range(N_data):
+        # if random_size == 0:
+        #    noise[i] = [0]
+        for w in noise[i, :]:
+            a = x_next[i] + w * B_mat - A_mat @ x_cur[i] - D_mat * pr_a[i]
+            b_all = []
+            for j in range(N_data):
+                b_aux = 0
+                for w2 in noise[i, :]:
+                    b_aux += (1 + x_cur[j] @ (x_next[i] + w2 * B_mat)
+                              ) * x_cur[j] / random_size
+                b = 2 * beta * b_aux @ B_mat
+                # b = 2 * beta * (1 + x_cur[j] @ (x_next[i] + w * B_mat)) * x_cur[j] @ B_mat
+                b_all.append(b)
+
+            P_mat_ = np.zeros((N_data, N_data))
+            for m in range(N_data):
+                for n in range(N_data):
+                    P_mat_[m][n] = b_all[m] * b_all[n] * B_mat.T @ B_mat
+
+            q_ = np.zeros((N_data))
+            for m in range(N_data):
+                q_[m] = 2 * b_all[m] * a @ B_mat
+
+            P_mat = P_mat + P_mat_ / max(random_size, 1)
+            q = q + q_ / max(random_size, 1)
+
+        # a = x_next[i] - A_mat @ x_cur[i] - D_mat * pr_a[i]
+        # b_all = []
+        # for j in range(N_data):
+        #   b_aux = 0
+        #   for w2 in noise[i,:]:
+        #     b_aux += (1 + x_cur[j] @ (x_next[i] + w2 * B_mat)) * x_cur[j] / random_size
+        #   b = 2 * beta * b_aux @ B_mat
+        #   # b = 2 * beta * (1 + x_cur[j] @ (x_next[i] + w * B_mat)) * x_cur[j] @ B_mat
+        #   b_all.append(b)
+
+        # P_mat_ = np.zeros((N_data,N_data))
+        # for m in range(N_data):
+        #   for n in range(N_data):
+        #     P_mat_[m][n] = b_all[m] * b_all[n] * B_mat.T @ B_mat
+
+        # q_ = np.zeros((N_data))
+        # for m in range(N_data):
+        #   q_[m] = 2 * b_all[m] * a @ B_mat
+
+        # P_mat = P_mat + P_mat_
+        # q = q + q_
+
+    V_mat = np.zeros((N_data, N_data))
+    for m in range(N_data):
+        for n in range(N_data):
+            V_mat[m][n] = -kernel(x_cur[m], x_cur[n])
+
+    P_old = P_mat
+    P_mat = P_mat - lambda_v * V_mat
+
+    G_mat = np.zeros((N_data, N_data))
+    for m in range(N_data):
+        for n in range(N_data):
+            sum = 0
+            # w = norm.rvs(0, d_sigma, size=random_size)
+            for w in noise[m, :]:
+                sum += kernel(x_cur[n], (x_next[m] + w * B_mat))
+            G_mat[m][n] = sum / max(random_size, 1) - kernel(
+                x_cur[n], x_cur[m])
+
+    #############################################
+    # 3n*3n with W
+    #############################################
+    P_c = np.zeros((3 * N_data, 3 * N_data))
+    P_c[:N_data, :N_data] = P_mat
+    P_c[N_data:2 * N_data, N_data:2 * N_data] = lambda_c * np.eye(N_data)
+    P_c[2 * N_data:3 * N_data, 2 * N_data:3 * N_data] = -lambda_b * V_mat
+
+    P_o = np.zeros((3 * N_data, 3 * N_data))
+    P_o[:N_data, :N_data] = P_old
+    P_o[N_data:2 * N_data, N_data:2 * N_data] = lambda_c * np.eye(N_data)
+    P_o[2 * N_data:3 * N_data, 2 * N_data:3 * N_data] = -lambda_b * V_mat
+
+    q_c = np.zeros(3 * N_data)
+    q_c[:N_data] = q
+
+    G_c = np.zeros((4 * N_data, 3 * N_data))
+    g = -np.eye(N_data)
+    G11, G12, G13 = G_mat, g, -V_mat
+    G22 = g
+    G31 = V_mat
+    G43 = V_mat
+    G_c[:N_data, :N_data] = G11
+    G_c[:N_data, N_data:2 * N_data] = G12
+    G_c[:N_data, 2 * N_data:3 * N_data] = G13
+    G_c[N_data:2 * N_data, N_data:2 * N_data] = G22
+    G_c[2 * N_data:3 * N_data, :N_data] = G31
+    G_c[3 * N_data:4 * N_data, 2 * N_data:3 * N_data] = G43
+
+    #############################################
+    # path = os.path.abspath(os.path.dirname(__file__)) + "\\"
+    path = os.path.abspath('.') + "\\data_inter\\"
+    np.savetxt(path + 'P_.csv', P_o, delimiter=',')
+    np.savetxt(path + 'P.csv', P_c, delimiter=',')
+    np.savetxt(path + 'q.csv', q_c, delimiter=',')
+    np.savetxt(path + 'G.csv', G_c, delimiter=',')
+    np.save(path + 'x_cur.npy', x_cur)
+    print(N_data)
+
+
+def QP_new(x_cur, x_next, acc, pr_a, d_sigma, random_size, A_mat, B_mat, D_mat,
+           beta, lambda_v, lambda_c, lambda_b):
+    N_data = len(x_cur)
+    P_mat = np.zeros((N_data, N_data))
+    q = np.zeros((N_data))
+    noise = norm.rvs(loc=0, scale=d_sigma, size=(N_data, random_size))
+
+    # x_next_realiz = np.zeros((N_data, random_size))
+    # for i in range(N_data):
+    #     for j in range(random_size):
+    #         x_next_realiz[
+    #             i, j] = A_mat @ x_cur[i] + B_mat @ (acc[i] + noise[i, j])
+
+    # for i in range(N_data):
+    #     for x_next in x_next_realiz[i, :]:
+    #         a
+
+    for i in range(N_data):
+        for w in noise[i, :]:
+            a = x_next[i] + w * B_mat - A_mat @ x_cur[i] - D_mat * pr_a[i]
+            b_all = []
+            for j in range(N_data):
+                b_aux = 0
+                for w2 in noise[i, :]:
+                    b_aux += (1 + x_cur[j] @ (x_next[i] + w2 * B_mat)
+                              ) * x_cur[j] / random_size
+                b = 2 * beta * b_aux @ B_mat
+                # b = 2 * beta * (1 + x_cur[j] @ (x_next[i] + w * B_mat)) * x_cur[j] @ B_mat
+                b_all.append(b)
+
+            P_mat_ = np.zeros((N_data, N_data))
+            for m in range(N_data):
+                for n in range(N_data):
+                    # P_mat_[m][n] = b_all[m] * b_all[n] * B_mat.T @ B_mat
+                    P_mat_[m][n] = b_all[m] * b_all[n] * (B_mat.T @ B_mat + 1)
+
+            q_ = np.zeros((N_data))
+            for m in range(N_data):
+                # q_[m] = 2 * b_all[m] * a @ B_mat
+                q_[m] = 2 * b_all[m] * (a @ B_mat + acc[i])
+
+            P_mat = P_mat + P_mat_ / max(random_size, 1)
+            q = q + q_ / max(random_size, 1)
+
+    V_mat = np.zeros((N_data, N_data))
+    for m in range(N_data):
+        for n in range(N_data):
+            V_mat[m][n] = -kernel(x_cur[m], x_cur[n])
+
+    P_old = P_mat
+    P_mat = P_mat - lambda_v * V_mat
+
+    G_mat = np.zeros((N_data, N_data))
+    for m in range(N_data):
+        for n in range(N_data):
+            sum = 0
+            # w = norm.rvs(0, d_sigma, size=random_size)
+            for w in noise[m, :]:
+                sum += kernel(x_cur[n], (x_next[m] + w * B_mat))
+            G_mat[m][n] = sum / max(random_size, 1) - kernel(
+                x_cur[n], x_cur[m])
+
+    #############################################
+    # (2n+1)*(2n+1) with W and single c
+    #############################################
+    P_c = np.zeros((2 * N_data + 1, 2 * N_data + 1))
+    P_c[:N_data, :N_data] = P_mat
+    P_c[N_data:N_data + 1, N_data:N_data + 1] = lambda_c
+    P_c[N_data + 1:2 * N_data + 1,
+        N_data + 1:2 * N_data + 1] = -lambda_b * V_mat
+
+    P_o = np.zeros((2 * N_data + 1, 2 * N_data + 1))
+    P_o[:N_data, :N_data] = P_old
+    P_o[N_data:N_data + 1, N_data:N_data + 1] = lambda_c
+    P_o[N_data + 1:2 * N_data + 1,
+        N_data + 1:2 * N_data + 1] = -lambda_b * V_mat
+
+    q_c = np.zeros(2 * N_data + 1)
+    q_c[:N_data] = q
+
+    G_c = np.zeros((3 * N_data + 1, 2 * N_data + 1))
+    G11, G12, G13 = G_mat, -1, -V_mat
+    G22 = -1
+    G31 = V_mat
+    G43 = V_mat
+    G_c[:N_data, :N_data] = G11
+    G_c[:N_data, N_data:N_data + 1] = G12
+    G_c[:N_data, N_data + 1:2 * N_data + 1] = G13
+    G_c[N_data:N_data + 1, N_data:N_data + 1] = G22
+    G_c[N_data + 1:2 * N_data + 1, :N_data] = G31
+    G_c[2 * N_data + 1:3 * N_data + 1, N_data + 1:2 * N_data + 1] = G43
+
+    #############################################
+    path = os.path.abspath('.') + "\\data_inter\\"
+    np.savetxt(path + 'P_.csv', P_o, delimiter=',')
+    np.savetxt(path + 'P.csv', P_c, delimiter=',')
+    np.savetxt(path + 'q.csv', q_c, delimiter=',')
+    np.savetxt(path + 'G.csv', G_c, delimiter=',')
+    np.save(path + 'x_cur.npy', x_cur)
+    print(N_data)

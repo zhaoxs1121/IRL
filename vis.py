@@ -1,16 +1,17 @@
 from data_management.functions import *
 import scipy.io
 
-path = os.path.abspath(os.path.dirname(__file__)) + "\\"
-x_t = np.load(path + 'x_t.npy')
+path = os.path.abspath(os.path.dirname(__file__)) + "\\data_inter\\"
+x_t = np.load(path + 'x_cur.npy')
 matlab_data = scipy.io.loadmat(path + 'solution.mat')
 # x_t = np.load("D:/learn/23SS/guided research/latex/results/4/x_t.npy")
 # matlab_data = scipy.io.loadmat('D:/learn/23SS/guided research/latex/results/4/solution.mat')
 
 x = matlab_data['x']
-N_data = int(len(x)/3)
+# N_data = int(len(x) / 3)
+N_data = int((len(x) - 1) / 2)
 alphas = x[:N_data]
-vf_plot(x_t,alphas,N_data,[],function='kernel',three_d=1,contour=1)
+vf_plot(x_t, alphas, N_data, [], function='kernel', three_d=0, contour=1)
 
 # X_idare_1 = np.array([[0.0664810659857291,0.338019400571855],[0.338019400571855,10.2089874277763]])
 # X_idare = np.array([[0.0711926870904237,0.372021429146792],[0.372021429146792,10.1880609946552]])

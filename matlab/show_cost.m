@@ -13,7 +13,7 @@ cost = 0;
 e_mean = 0;
 e_var = 0;
 
-Data_arrays = readmatrix('Data_arrays.csv');
+Data_arrays = readmatrix('../data_inter/Data_arrays.csv');
 [m,~] = size(Data_arrays);
 
 for j = 1:m 
@@ -47,7 +47,7 @@ for j = 1:m
             nu_error = p_v(i) - v(i);
             s_error = p_x(i) - x(i) - p_l;
             u_error = alpha * nu_error / s_error^2 + beta * (OV(s_error,v_max,h_go,h_st) - v(i));
-            e(i) = a(i) -u_error;
+            e(i) = a(i) - u_error;
         end
         e_mean = e_mean + sum(e);
         e_var = e_var + sum(e.*e);
