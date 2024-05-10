@@ -36,8 +36,8 @@ for j = 1:m
             % cost calculation
             s = p_x(i) - x_reg - p_l;
             nu = p_v(i) - v_reg;
-%             u_reg = kp * (s - h * v_reg) + kd * nu;
-            u_reg = kp * (s - h * v_reg - r) + kd * nu;
+            u_reg = kp * (s - h * v_reg) + kd * nu;
+%             u_reg = kp * (s - h * v_reg - r) + kd * nu;
             v_reg = v_reg + dt * u_reg;
             x_reg = x_reg + dt * v_reg;
 
@@ -46,8 +46,8 @@ for j = 1:m
             % error calculation 
             s_error = p_x(i) - x(i) - p_l;
             nu_error = p_v(i) - v(i);
-%             u_error = kp * (s_error - h * v_reg) + kd * nu_error;
-            u_error = kp * (s_error - h * v_reg - r) + kd * nu_error;
+            u_error = kp * (s_error - h * v_reg) + kd * nu_error;
+%             u_error = kp * (s_error - h * v(i) - r) + kd * nu_error;
             e(i) = a(i) - u_error;
         end
         e_mean = e_mean + sum(e);
