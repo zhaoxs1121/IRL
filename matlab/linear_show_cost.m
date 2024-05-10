@@ -2,7 +2,7 @@ function [cost,e_var,e_mean]=linear_show_cost(X)
 kp = X(1,1);
 kd = X(1,2);
 h = X(1,3);
-r = X(1,4);
+% r = X(1,4);
 
 count = 0;
 fast = 0;

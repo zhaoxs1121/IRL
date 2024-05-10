@@ -2,7 +2,7 @@ function min=linear_cost_func(X)
 kp = X(1,1);
 kd = X(1,2);
 h = X(1,3);
-r = X(1,4);
+% r = X(1,4);
 
 fast = 0;
 dt = 0.04;
