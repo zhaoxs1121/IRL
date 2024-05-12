@@ -46,7 +46,7 @@ for j = 1:m
             % error calculation 
             s_error = p_x(i) - x(i) - p_l;
             nu_error = p_v(i) - v(i);
-            u_error = kp * (s_error - h * v_reg) + kd * nu_error;
+            u_error = kp * (s_error - h * v(i)) + kd * nu_error;
 %             u_error = kp * (s_error - h * v(i) - r) + kd * nu_error;
             e(i) = a(i) - u_error;
         end
