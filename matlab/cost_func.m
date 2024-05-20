@@ -5,12 +5,16 @@ v_max = X(1,3);
 h_go = X(1,4);
 h_st = X(1,5);
 
+h = pi^(3/2)*(h_go - h_st)/(10*v_max);
+r = (h_go + h_st)/2 - v_max*h/2;
+
 fast = 0;
 dt = 0.04;
 
 cost = 0;
 e_mean = 0;
 e_var = 0;
+sp_mean = 0;
 
 % data is exported from python, with shape of (n,6). 6 columns correspond
 % to x/v/a of the ego vehicle, x/v/length of the preceeding vehicle. 
@@ -51,13 +55,16 @@ for j = 1:m
             s_error = p_x(i) - x(i) - p_l;
             u_error = alpha * nu_error / s_error^2 + beta * (OV(s_error,v_max,h_go,h_st) - v(i));
             e(i) = a(i) - u_error;
+
+            % spacing error
+            sp_mean = sp_mean + s_error - h * v(i) -r;
         end
         e_mean = e_mean + sum(e);
         e_var = e_var + sum(e.*e);
     end
 end
-
-min = cost + e_var + e_mean^2;
+min = cost + e_var + e_mean^2 + sp_mean^2;
+% min = cost + e_var + e_mean^2;
 end
 
 

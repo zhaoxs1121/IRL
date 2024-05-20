@@ -10,6 +10,7 @@ dt = 0.04;
 cost = 0;
 e_mean = 0;
 e_var = 0;
+sp_mean = 0;
 
 Data_arrays = readmatrix('../data_inter/Data_arrays.csv');
 [m,~] = size(Data_arrays);
@@ -47,12 +48,17 @@ for j = 1:m
             u_error = kp * (s_error - h * v(i)) + kd * nu_error;
 %             u_error = kp * (s_error - h * v(i) - r) + kd * nu_error;
             e(i) = a(i) - u_error;
+
+            % spacing error
+%             sp_mean = sp_mean + s_error - h * v(i) - r;
+            sp_mean = sp_mean + s_error - h * v(i);
         end
         e_mean = e_mean + sum(e);
         e_var = e_var + sum(e.*e);
     end
 end
-min = 1*cost + e_var + e_mean^2;
+% min = cost + e_var + e_mean^2;
+min = cost + e_var + e_mean^2 + 0*sp_mean^2;
 end
 
 

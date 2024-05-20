@@ -5,6 +5,9 @@ v_max = X(1,3);
 h_go = X(1,4);
 h_st = X(1,5);
 
+% h = pi^(3/2)*(h_go - h_st)/(10*v_max);
+% r = (h_go + h_st)/2 - v_max*h/2;
+
 count = 0;
 fast = 0;
 dt = 0.04;
@@ -48,9 +51,13 @@ for j = 1:m
             s_error = p_x(i) - x(i) - p_l;
             u_error = alpha * nu_error / s_error^2 + beta * (OV(s_error,v_max,h_go,h_st) - v(i));
             e(i) = a(i) - u_error;
+
+            % spacing error
+%             sp(i) = s - h * v(i) -r;
         end
         e_mean = e_mean + sum(e);
         e_var = e_var + sum(e.*e);
+%         sp_mean = sp_mean + sum(sp);
     end
 end
 e_mean = e_mean^2/(m-count);
