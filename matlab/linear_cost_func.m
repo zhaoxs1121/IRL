@@ -2,8 +2,9 @@ function min=linear_cost_func(X)
 kp = X(1,1);
 kd = X(1,2);
 h = X(1,3);
-% r = X(1,4);
+r = X(1,4);
 
+count = 0;
 fast = 0;
 dt = 0.04;
 
@@ -19,6 +20,7 @@ for j = 1:m
     if Data_arrays(j,1)==0 
         slow = fast;
         fast = j;
+        count = 0;
 
         x = Data_arrays(slow+1:fast-1,1);
         v = Data_arrays(slow+1:fast-1,2);
@@ -35,8 +37,8 @@ for j = 1:m
             % cost calculation
             s = p_x(i) - x_reg - p_l;
             nu = p_v(i) - v_reg;
-            u_reg = kp * (s - h * v_reg) + kd * nu;
-%             u_reg = kp * (s - h * v_reg - r) + kd * nu;
+%             u_reg = kp * (s - h * v_reg) + kd * nu;
+            u_reg = kp * (s - h * v_reg - r) + kd * nu;
             v_reg = v_reg + dt * u_reg;
             x_reg = x_reg + dt * v_reg;
 
@@ -45,20 +47,20 @@ for j = 1:m
             % error calculation 
             s_error = p_x(i) - x(i) - p_l;
             nu_error = p_v(i) - v(i);
-            u_error = kp * (s_error - h * v(i)) + kd * nu_error;
-%             u_error = kp * (s_error - h * v(i) - r) + kd * nu_error;
+%             u_error = kp * (s_error - h * v(i)) + kd * nu_error;
+            u_error = kp * (s_error - h * v(i) - r) + kd * nu_error;
             e(i) = a(i) - u_error;
 
             % spacing error
-%             sp_mean = sp_mean + s_error - h * v(i) - r;
-            sp_mean = sp_mean + s_error - h * v(i);
+            sp_mean = sp_mean + s_error - h * v(i) - r;
+%             sp_mean = sp_mean + s_error - h * v(i);
         end
         e_mean = e_mean + sum(e);
         e_var = e_var + sum(e.*e);
     end
 end
 % min = cost + e_var + e_mean^2;
-min = cost + e_var + e_mean^2 + 0*sp_mean^2;
+min = cost/(m-count) + e_var/(m-count) + (e_mean/(m-count))^2 + (sp_mean/(m-count))^2;
 end
 
 

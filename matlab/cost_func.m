@@ -8,6 +8,7 @@ h_st = X(1,5);
 h = pi^(3/2)*(h_go - h_st)/(10*v_max);
 r = (h_go + h_st)/2 - v_max*h/2;
 
+count = 0;
 fast = 0;
 dt = 0.04;
 
@@ -28,6 +29,7 @@ for j = 1:m
         % pair is (slow+1,fast-1), with length = fast-slow-1
         slow = fast;
         fast = j;
+        count = count + 1;
 
         x = Data_arrays(slow+1:fast-1,1);
         v = Data_arrays(slow+1:fast-1,2);
@@ -63,7 +65,8 @@ for j = 1:m
         e_var = e_var + sum(e.*e);
     end
 end
-min = cost + e_var + e_mean^2 + sp_mean^2;
+% min = cost + e_var + e_mean^2 + sp_mean^2;
+min = cost/(m-count) + e_var/(m-count) + (e_mean/(m-count))^2 + (sp_mean/(m-count))^2;
 % min = cost + e_var + e_mean^2;
 end
 

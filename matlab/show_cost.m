@@ -60,7 +60,7 @@ for j = 1:m
 %         sp_mean = sp_mean + sum(sp);
     end
 end
-e_mean = e_mean^2/(m-count);
+e_mean = (e_mean/(m-count))^2;
 e_var = e_var/(m-count);
 cost = cost/(m-count);
 end

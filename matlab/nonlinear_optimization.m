@@ -33,16 +33,16 @@ clc;
 
 %% linear system
 
-x = fmincon(@(x)linear_cost_func(x),[0.01,0.15,1],[],[],[],[],[0,0,0],[1,1,10]);
-% x = [0.016163,0.584277,1.030583];
-[cost0,e_var,e_mean]=linear_show_cost(x);
-fprintf('x_linear=[%f,%f,%f]\n',x)
-fprintf('cost=%f,e_mean=%f,e_var=%f\n',cost0,e_mean,e_var)
+% x = fmincon(@(x)linear_cost_func(x),[0.01,0.15,1],[],[],[],[],[0,0,0],[1,1,10]);
+% % x = [0.016163,0.584277,1.030583];
+% [cost0,e_var,e_mean]=linear_show_cost(x);
+% fprintf('x_linear=[%f,%f,%f]\n',x)
+% fprintf('cost=%f,e_mean=%f,e_var=%f\n',cost0,e_mean,e_var)
 
 %% including 'r' in the dynamic 
-% x = fmincon(@(x)linear_cost_func(x),[0.01,0.15,1,10],[],[],[],[],[0,0,0,0],[1,10,10,100]);
-% fprintf('x_linear=[%f,%f,%f,%f]\n',x)
-% [cost0,e_var,e_mean]=linear_show_cost(x);
-% fprintf('cost=%f,e_mean=%f,e_var=%f\n',cost0,e_mean,e_var)
+x = fmincon(@(x)linear_cost_func(x),[0.01,0.15,1,10],[],[],[],[],[0,0,0,0],[1,10,10,100]);
+fprintf('x_linear=[%f,%f,%f,%f]\n',x)
+[cost0,e_var,e_mean]=linear_show_cost(x);
+fprintf('cost=%f,e_mean=%f,e_var=%f\n',cost0,e_mean,e_var)
 
 %% cost=17.994266,e_mean=0.000013,e_var=0.374512
