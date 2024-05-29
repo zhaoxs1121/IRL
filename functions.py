@@ -358,10 +358,10 @@ def kernel(x1, x2):
 
 
 def value_func(x, x_t, alphas, N_data):
-    sum = 0
+    sum_ = 0
     for i in range(N_data):
-        sum += alphas[i] * kernel(x, x_t[i])
-    return sum
+        sum_ += alphas[i] * kernel(x, x_t[i])
+    return sum_
 
 
 def quad_value_func(x1, x2):
@@ -377,10 +377,10 @@ def OV(x, v_max, h_go, h_st):
 
 
 # def derivative_v(x,x_t,alphas,N_data):
-#   sum = 0
+#   sum_ = 0
 #   for i in range(N_data):
-#     sum += alphas[i]*2*(1+x_t[i]@x)*x_t[i].T
-#   return sum
+#     sum_ += alphas[i]*2*(1+x_t[i]@x)*x_t[i].T
+#   return sum_
 
 # def pi_hat(x,x_all,alphas,N_data,Ax,Bx,beta):
 #   de = derivative_v(Ax@x,x_all,alphas,N_data)
@@ -389,6 +389,7 @@ def OV(x, v_max, h_go, h_st):
 
 def vf_plot(x_t,
             alphas,
+            alphas_quad,
             N_data,
             X_idare=0,
             function='kernel',
@@ -401,6 +402,7 @@ def vf_plot(x_t,
     y = np.linspace(-5, 5, n)  #0.1 20*20
     x, y = np.meshgrid(x, y)
     z = np.zeros((n, n))
+    z_quad = np.zeros((n, n))
 
     if function == 'kernel':
         for i in range(n):
@@ -412,6 +414,10 @@ def vf_plot(x_t,
             for j in range(n):
                 z[j, i] = quad_value_func(np.array([x[0, i], y[j, 0]]),
                                           X_idare)
+    for i in range(n):
+        for j in range(n):
+            z_quad[j, i] = np.array(
+                [x[0, i]**2, 2 * x[0, i] * y[j, 0], y[j, 0]**2]) @ alphas_quad
 
     if three_d == 1:
         fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
@@ -427,11 +433,18 @@ def vf_plot(x_t,
         plt.show()
 
     if contour == 1:
-        # for x in x_t:
-        #   if x[0]<20:
-        #     plt.scatter(x[0], x[1], s = 30, c = 'b')
-        C = plt.contour(x, y, z, levels=[10**i for i in range(-4, 8)])
+        for xt in x_t:
+            if xt[0] < 20:
+                plt.scatter(xt[0], xt[1], s=30, c='b')
+        C = plt.contour(x, y, z, levels=[10**i for i in range(-1, 5)])
         plt.clabel(C, inline=True, fontsize=10)
+        C_quad = plt.contour(x,
+                             y,
+                             z_quad,
+                             levels=[10**i for i in range(-1, 5)],
+                             linestyles='dashdot')
+        plt.clabel(C_quad, inline=True, fontsize=10)
+        # plt.legend(handles=[l1, l2], labels=['kernel', 'quad'], loc='best')
         plt.show()
 
     # print(value_func(np.array([-20,0]),x_t,alphas,N_data))
@@ -537,11 +550,11 @@ def QP(x_cur, x_next, pr_a, d_sigma, random_size, A_mat, B_mat, D_mat, beta,
     G_mat = np.zeros((N_data, N_data))
     for m in range(N_data):
         for n in range(N_data):
-            sum = 0
+            sum_ = 0
             # w = norm.rvs(0, d_sigma, size=random_size)
             for w in noise[m, :]:
-                sum += kernel(x_cur[n], (x_next[m] + w * B_mat))
-            G_mat[m][n] = sum / max(random_size, 1) - kernel(
+                sum_ += kernel(x_cur[n], (x_next[m] + w * B_mat))
+            G_mat[m][n] = sum_ / max(random_size, 1) - kernel(
                 x_cur[n], x_cur[m])
 
     #############################################
@@ -591,27 +604,20 @@ def QP_new(x_cur, x_next, acc, pr_a, d_sigma, random_size, A_mat, B_mat, D_mat,
     q = np.zeros((N_data))
     noise = norm.rvs(loc=0, scale=d_sigma, size=(N_data, random_size))
 
-    # x_next_realiz = np.zeros((N_data, random_size))
-    # for i in range(N_data):
-    #     for j in range(random_size):
-    #         x_next_realiz[
-    #             i, j] = A_mat @ x_cur[i] + B_mat @ (acc[i] + noise[i, j])
-
-    # for i in range(N_data):
-    #     for x_next in x_next_realiz[i, :]:
-    #         a
+    x_next_realiz = np.zeros((N_data, random_size, 2))
+    for i in range(N_data):
+        for j in range(random_size):
+            x_next_realiz[
+                i, j, :] = A_mat @ x_cur[i] + B_mat * (acc[i] + noise[i, j])
 
     for i in range(N_data):
-        for w in noise[i, :]:
-            a = x_next[i] + w * B_mat - A_mat @ x_cur[i] - D_mat * pr_a[i]
+        for ii in range(random_size):
+            x_next_sample = x_next_realiz[i, ii, :]
+            a = x_next_sample - A_mat @ x_cur[i] - D_mat * pr_a[i]
             b_all = []
             for j in range(N_data):
-                b_aux = 0
-                for w2 in noise[i, :]:
-                    b_aux += (1 + x_cur[j] @ (x_next[i] + w2 * B_mat)
-                              ) * x_cur[j] / random_size
+                b_aux = (1 + x_cur[j] @ x_next_sample) * x_cur[j]
                 b = 2 * beta * b_aux @ B_mat
-                # b = 2 * beta * (1 + x_cur[j] @ (x_next[i] + w * B_mat)) * x_cur[j] @ B_mat
                 b_all.append(b)
 
             P_mat_ = np.zeros((N_data, N_data))
@@ -633,18 +639,30 @@ def QP_new(x_cur, x_next, acc, pr_a, d_sigma, random_size, A_mat, B_mat, D_mat,
         for n in range(N_data):
             V_mat[m][n] = -kernel(x_cur[m], x_cur[n])
 
+    Xx = np.zeros((N_data))
+    for m in range(N_data):
+        Xx[m] = x_cur[m] @ x_cur[m]
+
     P_old = P_mat
     P_mat = P_mat - lambda_v * V_mat
 
     G_mat = np.zeros((N_data, N_data))
     for m in range(N_data):
         for n in range(N_data):
-            sum = 0
-            # w = norm.rvs(0, d_sigma, size=random_size)
-            for w in noise[m, :]:
-                sum += kernel(x_cur[n], (x_next[m] + w * B_mat))
-            G_mat[m][n] = sum / max(random_size, 1) - kernel(
+            sum_ = 0
+            for mm in range(random_size):
+                sum_ += kernel(x_cur[n], x_next_realiz[m, mm, :])
+            G_mat[m][n] = sum_ / max(random_size, 1) - kernel(
                 x_cur[n], x_cur[m])
+
+    # G_mat = np.zeros((N_data, N_data))
+    # for m in range(N_data):
+    #     for n in range(N_data):
+    #         sum_ = 0
+    #         for w in noise[m, :]:
+    #             sum_ += kernel(x_cur[n], (x_next[m] + w * B_mat))
+    #         G_mat[m][n] = sum_ / max(random_size, 1) - kernel(
+    #             x_cur[n], x_cur[m])
 
     #############################################
     # (2n+1)*(2n+1) with W and single c
@@ -682,5 +700,104 @@ def QP_new(x_cur, x_next, acc, pr_a, d_sigma, random_size, A_mat, B_mat, D_mat,
     np.savetxt(path + 'P.csv', P_c, delimiter=',')
     np.savetxt(path + 'q.csv', q_c, delimiter=',')
     np.savetxt(path + 'G.csv', G_c, delimiter=',')
+    np.savetxt(path + 'xx.csv', Xx, delimiter=',')
     np.save(path + 'x_cur.npy', x_cur)
+    print(N_data)
+
+
+def QP_quad(x_cur, x_next, acc, pr_a, d_sigma, random_size, A_mat, B_mat,
+            D_mat, beta, lambda_v, lambda_c, lambda_w):
+    R = 2.5
+    N_data = len(x_cur)
+    par_dim = 3
+    var_dim = 7
+    constr_dim = N_data + N_data * (1 + random_size) + 1 + N_data * (
+        1 + random_size)
+    P_mat = np.zeros((var_dim, var_dim))
+    q = np.zeros((var_dim, 1))
+    A_cost = np.zeros((constr_dim, var_dim))
+    b_cost = np.zeros((constr_dim, 1))
+    noise = norm.rvs(loc=0, scale=d_sigma, size=(N_data, random_size))
+
+    x_next_realiz = np.zeros((N_data, random_size, 2))
+    for i in range(N_data):
+        for j in range(random_size):
+            x_next_realiz[
+                i, j, :] = A_mat @ x_cur[i] + B_mat * (acc[i] + noise[i, j])
+
+    for i in range(N_data):
+        xx = np.array(
+            [x_cur[i][0]**2, 2 * x_cur[i][0] * x_cur[i][1],
+             x_cur[i][1]**2]).reshape((3, 1))
+        for j in range(random_size):
+            x_next_sample = x_next_realiz[i, j, :]
+            xx_next = np.array([
+                x_next_sample[0]**2, 2 * x_next_sample[0] * x_next_sample[1],
+                x_next_sample[1]**2
+            ]).reshape((3, 1))
+            a = x_next_sample - A_mat @ x_cur[i] - D_mat * pr_a[i]
+
+            dV_aux = 2 * np.array([[x_next_sample[0], x_next_sample[1], 0],
+                                   [0, x_next_sample[0], x_next_sample[1]]])
+            B_mat = B_mat.reshape((2, 1))
+            b = -beta * B_mat @ B_mat.T @ dV_aux
+
+            P_mat[:par_dim, :par_dim] += b.T @ b / random_size
+            q[:par_dim] += 2 * b.T @ a.reshape((2, 1)) / random_size
+            P_mat[par_dim, par_dim] += lambda_c
+            P_mat[:par_dim, :par_dim] += lambda_v * (xx @ xx.T +
+                                                     xx_next @ xx_next.T) / 2
+            P_mat[-par_dim:, -par_dim:] += lambda_w * (xx @ xx.T +
+                                                       xx_next @ xx_next.T) / 2
+            q[:par_dim] += lambda_v * (xx + xx_next) / 2
+            q[-par_dim:] += lambda_w * (xx + xx_next) / 2
+
+    for i in range(N_data):
+        xx = np.array(
+            [x_cur[i][0]**2, 2 * x_cur[i][0] * x_cur[i][1], x_cur[i][1]**2])
+        xx_aux = np.zeros(par_dim).reshape((1, 3))
+        for j in range(random_size):
+            x_next_sample = x_next_realiz[i, j, :]
+            xx_next = np.array([
+                x_next_sample[0]**2, 2 * x_next_sample[0] * x_next_sample[1],
+                x_next_sample[1]**2
+            ]).reshape((1, 3))
+            xx_aux += xx_next / random_size
+
+            # term for -x'*Pv*x<0
+            A_cost[N_data + N_data + i * random_size + j, :par_dim] = -xx_next
+            b_cost[N_data + N_data + i * random_size + j,
+                   0] = -0.5e-1 * xx_next @ np.array([1, 0, 1])
+
+            # term for -x'*Pw*x<0
+            A_cost[N_data + N_data * (1 + random_size) + 1 + N_data +
+                   i * random_size + j,
+                   par_dim + 1:par_dim + 1 + par_dim] = -xx_next
+            b_cost[N_data + N_data * (1 + random_size) + 1 + N_data +
+                   i * random_size + j,
+                   0] = -1e-4 * xx_next @ np.array([1, 0, 1])
+
+        # term for E[Delta V]= V_next - V - c + W <0
+        A_cost[i, :par_dim] = xx_aux - xx
+        A_cost[i, par_dim] = -1
+        A_cost[i, par_dim + 1:par_dim + 1 + par_dim] = xx
+        b_cost[i, 0] = -acc[i] * R * acc[i]
+        # term for -x'*Pv*x<0
+        A_cost[N_data + i, :par_dim] = -xx
+        b_cost[N_data + i, 0] = -0.5e-1 * xx @ np.array([1, 0, 1])
+        # term for -c<0
+        A_cost[N_data + N_data * (1 + random_size) + 1, par_dim + 1] = -1
+        # term for -x'*Pw*x<0
+        A_cost[N_data + N_data * (1 + random_size) + 1 + i,
+               par_dim + 1:par_dim + 1 + par_dim] = -xx
+        b_cost[N_data + N_data * (1 + random_size) + 1 + i,
+               0] = -1e-4 * xx @ np.array([1, 0, 1])
+
+    #############################################
+    path = os.path.abspath('.') + "\\data_inter\\"
+    np.savetxt(path + 'P_quad.csv', P_mat, delimiter=',')
+    np.savetxt(path + 'q_quad.csv', q, delimiter=',')
+    np.savetxt(path + 'A_quad.csv', A_cost, delimiter=',')
+    np.savetxt(path + 'B_quad.csv', b_cost, delimiter=',')
+    # np.save(path + 'x_cur.npy', x_cur)
     print(N_data)

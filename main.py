@@ -119,9 +119,12 @@ def main(tracks):
     ###########################################
     ## dynamic least square solver
     ###########################################
-    kp = 0.006354857329713133
-    kd = 0.16748344692513145
-    h = 0.8903920819008573
+    # kp = 0.006354857329713133
+    # kd = 0.16748344692513145
+    # h = 0.8903920819008573
+    kp = 0.017258
+    kd = 0.617991
+    h = 0.913008
     Se = Dhw - h * Vel  #- r
     dt = 0.04
     A_mat = np.array([[1, dt], [0, 1]])
@@ -182,6 +185,8 @@ def main(tracks):
     QP_new(x_cur, x_next, acc, pr_a, d_sigma, random_size, A_mat, B_mat, D_mat,
            beta, lambda_v, lambda_c, lambda_b)
 
+    QP_quad(x_cur, x_next, acc, pr_a, d_sigma, random_size, A_mat, B_mat,
+            D_mat, beta, lambda_v, lambda_c, lambda_b)
     ###########################################
     ## scatter
     ###########################################
