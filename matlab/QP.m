@@ -34,14 +34,14 @@ clc;
 % [~,S,~] = dlqr(A,B,Qx,R);
 % S
 
-% kernel
-P = readmatrix('../data_inter/P.csv');
-P_ = readmatrix('../data_inter/P_.csv');
-q = readmatrix('../data_inter/q.csv');
-G = readmatrix('../data_inter/G.csv');
-xx = readmatrix('../data_inter/xx.csv');
-[m,~] = size(P);
-
+%% kernel
+H = readmatrix('../data_inter/P.csv');
+% P_ = readmatrix('../data_inter/P_.csv');
+f = readmatrix('../data_inter/q.csv');
+A = readmatrix('../data_inter/G.csv');
+b = readmatrix('../data_inter/h.csv');
+% xx = readmatrix('../data_inter/xx.csv');
+[m,~] = size(H);
 
 % 2n without W
 % n = m/2;
@@ -54,25 +54,29 @@ xx = readmatrix('../data_inter/xx.csv');
 % x = quadprog(2*P,q,G,[zeros(2*n,1);-0.05*ones(n,1);zeros(n,1)],[ones(1,n) zeros(1,2*n);zeros(1,2*n) ones(1,n)],[0;0],[],[],[],options); %%%%old
 
 % 2n+1 witH W and single c
-options = optimoptions(@quadprog,'MaxIterations',500);
-n = (m-1)/2;
-con = 0.1;
-x = quadprog(2*P,q,G,[zeros(n+1,1);-con*xx;-0*xx],[ones(1,n) zeros(1,n+1);zeros(1,n+1) ones(1,n)],[0;0],[],[],[],options); %%%%old
+% options = optimoptions(@quadprog,'MaxIterations',500);
+% n = (m-1)/2;
+% con = 0.1;
+% x = quadprog(2*P,q,G,[zeros(n+1,1);-con*xx;-0*xx],[ones(1,n) zeros(1,n+1);zeros(1,n+1) ones(1,n)],[0;0],[],[],[],options); %%%%old
 % x = quadprog(2*P1,q1,G1,zeros(n,1),[ones(1,n)],0); %%%%origin
 % x = quadprog(2*P,q,G,zeros(1.5*n,1),[ones(1,n/2) zeros(1,n/2)],0); %%%%old
 % x = quadprog(2*P,q,G,zeros(4*n,1),[ones(1,n) zeros(1,2*n);zeros(1,2*n) ones(1,n)],[0;0]); %%%%old
 
+% new structure same with quad
+n = (m-1)/2;
+x = quadprog(2*H,f,A,b,[ones(1,n) zeros(1,n+1);zeros(1,n+1) ones(1,n)],[0;0]);
+
 save('../data_inter/solution.mat',"x")
-% 
+
 % S1 = x.'*P_*x;
 % S2 = x.'*P*x;
 
 
-% quadratic
-H = readmatrix('../data_inter/P_quad.csv');
-f = readmatrix('../data_inter/q_quad.csv');
-A = readmatrix('../data_inter/A_quad.csv');
-b = readmatrix('../data_inter/B_quad.csv');
+%% quadratic
+H_quad = readmatrix('../data_inter/P_quad.csv');
+f_quad = readmatrix('../data_inter/q_quad.csv');
+A_quad = readmatrix('../data_inter/A_quad.csv');
+b_quad = readmatrix('../data_inter/B_quad.csv');
 
-x_quad = quadprog(2*H,f,A,b);
+x_quad = quadprog(2*H_quad,f_quad,A_quad,b_quad); % ,[ones(1,3) zeros(1,4)],0
 save('../data_inter/solution_quad.mat',"x_quad")
