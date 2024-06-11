@@ -143,14 +143,19 @@ def main(tracks):
     ###########################################
     ## parameters
     ###########################################
-    N_data = 100
+    N_data = 50
     beta = 0.2
     lambda_v = 0.01 * N_data / 719.34  #0.0006
-    lambda_c = 1
+    lambda_c = 1.5
     lambda_b = 0.0005
-    random_size = 10
+    random_size = 20
     thres_1 = 40
     thres_2 = 12
+    lambda_U = 0.03
+    reg_v1_ker = 2.5e-1
+    reg_v2_ker = 2.5e-1
+    reg_v1_quad = 1e-1
+    reg_v2_quad = 1e-1
 
     ###########################################
     ## QP
@@ -172,7 +177,7 @@ def main(tracks):
                             ind[i]] > x[1] - thres_2 / 5 / N_data**0.5:
                 sign = 1
                 break
-        if sign == 0:
+        if sign == 0 and ind[i] != len(Se) - 1:
             x_cur.append(np.array([Se[ind[i]], Nu[ind[i]]]))
             x_next.append(np.array([Se[ind[i] + 1], Nu[ind[i] + 1]]))
             # x_last.append(np.array([Se[ind[i] - 1], Nu[ind[i] - 1]]))
@@ -183,10 +188,12 @@ def main(tracks):
             break
 
     QP_new(x_cur, x_next, acc, pr_a, d_sigma, random_size, A_mat, B_mat, D_mat,
-           beta, lambda_v, lambda_c, lambda_b)
+           beta, lambda_v, lambda_c, lambda_b, lambda_U, reg_v1_ker,
+           reg_v2_ker)
 
     QP_quad(x_cur, x_next, acc, pr_a, d_sigma, random_size, A_mat, B_mat,
-            D_mat, beta, lambda_v, lambda_c, lambda_b)
+            D_mat, beta, lambda_v, lambda_c, lambda_b, lambda_U, reg_v1_quad,
+            reg_v2_quad)
     ###########################################
     ## scatter
     ###########################################
