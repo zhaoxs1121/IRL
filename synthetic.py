@@ -12,8 +12,8 @@ data_per_tra = 300
 
 # d_mu, d_sigma = 0, 0.6250671167191522
 d_mu, d_sigma = 0, 0.621241544469323
-kp, kd, h = 0.006354857329713133, 0.16748344692513145, 0.8903920819008573
-# kp, kd, h= 0.015344,0.487301,1.429661
+# kp, kd, h = 0.006354857329713133, 0.16748344692513145, 0.8903920819008573
+kp, kd, h = 0.017258, 0.617991, 0.913008
 dt = 0.04
 A_mat = np.array([[1, dt], [0, 1]])
 B_mat = np.array([-dt * (h + dt), -dt])
@@ -37,17 +37,22 @@ for s in Grid:
 # plt.show()
 
 #########################################################################################
-N_data = 100
+N_data = 50
 beta = 0.2
 lambda_v = 0.01 * N_data / 719.34  #2000
 lambda_c = 10
 lambda_b = 0.0005
-random_size = 30
-thres_1 = 40
-thres_2 = 12
+random_size = 20
+thres_1 = 30  #40
+thres_2 = 8  #12
+lambda_U = 0.03
+reg_v1_ker = 2e-1
+reg_v2_ker = 2e-1
+reg_v1_quad = 1e-1
+reg_v2_quad = 1e-1
 
 x_cur, x_next = [], []
-ind, ind_pr = [], np.random.randint(1, len(syn_x) + 1, N_data * 2)
+ind, ind_pr = [], np.random.randint(1, len(syn_x) + 1, N_data * 4)
 for index in ind_pr:
     if index % data_per_tra != 1 and index % data_per_tra != 0:
         ind.append(index)
@@ -71,14 +76,18 @@ for i in range(len(ind)):
     if len(x_cur) == N_data:
         break
 
+print(len(x_cur))
 acc = np.zeros(N_data)
 for i in range(N_data):
     acc[i] = kp * x_cur[i][0] + kd * x_cur[i][1]
-print(1)
 
 QP_new(x_cur, x_next, acc, np.zeros(N_data), d_sigma, random_size, A_mat,
-       B_mat, D_mat, beta, lambda_v, lambda_c, lambda_b)
+       B_mat, D_mat, beta, lambda_v, lambda_c, lambda_b, lambda_U, reg_v1_ker,
+       reg_v2_ker)
 
+QP_quad(x_cur, x_next, acc, np.zeros(N_data), d_sigma, random_size, A_mat,
+        B_mat, D_mat, beta, lambda_v, lambda_c, lambda_b, lambda_U,
+        reg_v1_quad, reg_v2_quad)
 # def QP_new_syn(x_cur, x_next):
 #     N_data = len(x_cur)
 #     P_mat = np.zeros((N_data, N_data))
@@ -164,6 +173,3 @@ QP_new(x_cur, x_next, acc, np.zeros(N_data), d_sigma, random_size, A_mat,
 #     np.savetxt(path + 'G.csv', G_c, delimiter=',')
 #     np.save(path + 'x_cur.npy', x_cur)
 #     print(N_data)
-
-# QP_new(x_cur, x_next)
-# QP(x_cur,x_next)
