@@ -147,15 +147,16 @@ def main(tracks):
     beta = 0.2
     lambda_v = 0.01 * N_data / 719.34  #0.0006
     lambda_c = 1.5
-    lambda_b = 0.0005
-    random_size = 20
+    lambda_b = 0.0005  # 0.0005
+    random_size = 25
     thres_1 = 40
     thres_2 = 12
-    lambda_U = 0.03
-    reg_v1_ker = 2.5e-1
-    reg_v2_ker = 2.5e-1
-    reg_v1_quad = 1e-1
-    reg_v2_quad = 1e-1
+    lambda_U_ker = 0.25  # 0.05
+    lambda_U_quad = 0.1  # 0.05
+    con_v1_ker = 2.5e-1
+    con_v2_ker = 2.5e-1
+    con_v1_quad = 1e-1
+    con_v2_quad = 1e-1
 
     ###########################################
     ## QP
@@ -187,13 +188,12 @@ def main(tracks):
         if len(x_cur) == N_data:
             break
 
-    QP_new(x_cur, x_next, acc, pr_a, d_sigma, random_size, A_mat, B_mat, D_mat,
-           beta, lambda_v, lambda_c, lambda_b, lambda_U, reg_v1_ker,
-           reg_v2_ker)
+    QP_new(x_cur, acc, pr_a, d_sigma, random_size, A_mat, B_mat, D_mat, beta,
+           lambda_v, lambda_c, lambda_b, lambda_U_ker, con_v1_ker, con_v2_ker)
 
-    QP_quad(x_cur, x_next, acc, pr_a, d_sigma, random_size, A_mat, B_mat,
-            D_mat, beta, lambda_v, lambda_c, lambda_b, lambda_U, reg_v1_quad,
-            reg_v2_quad)
+    QP_quad(x_cur, acc, pr_a, d_sigma, random_size, A_mat, B_mat, D_mat, beta,
+            lambda_v, lambda_c, lambda_b, lambda_U_quad, con_v1_quad,
+            con_v2_quad)
     ###########################################
     ## scatter
     ###########################################

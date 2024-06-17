@@ -125,17 +125,17 @@ def main(tracks):
     ## extract features needed
     ###########################################
     Vel, Acc, Nu, Dhw, Pr_a, pairs = extract_features(vf_tracks, tracks)
-    V_gen, A_gen, Nu_gen, D_gen, Pr_x_a_gen, pairs_gen = extract_features_gen(
-        vf_tracks, tracks)
+    # V_gen, A_gen, Nu_gen, D_gen, Pr_x_a_gen, pairs_gen = extract_features_gen(
+    #     vf_tracks, tracks)
     # print(len(Vel))
 
     ###########################################
     ## construct data_array exported to MATLAB
     ###########################################
-    P_V = "p_v"
-    P_X = "p_x"
-    P_L = 'p_l'
-    X = "x"
+    # P_V = "p_v"
+    # P_X = "p_x"
+    # P_L = 'p_l'
+    # X = "x"
 
     # for i in range(len(pairs)):
     #   pair = pairs[i]
@@ -148,33 +148,107 @@ def main(tracks):
     # path = os.path.abspath(os.path.dirname(__file__)) + "\\data_inter\\"
     # np.savetxt(path + 'Data_arrays.csv', Data_arrays, delimiter = ',')
 
-    for i in range(2):  #len(pairs)
-        pair = pairs[i]
-        pair_art = pairs_gen[i]
-        pair_len = pair[X].size
-        # print(pair_len)
-        plt.plot(np.arange(pair_len),
-                 pair[X_VELOCITY],
-                 's-',
-                 color='r',
-                 label='data')
-        plt.plot(np.arange(pair_len),
-                 pair_art[X_VELOCITY],
-                 'o-',
-                 color='b',
-                 label='gen')
-        plt.legend(loc='best', fontsize=28)
-        plt.xlabel('t/dt', fontdict={'family': 'Times New Roman', 'size': 32})
-        plt.ylabel('Velocity',
-                   fontdict={
-                       'family': 'Times New Roman',
-                       'size': 32
-                   })
-        plt.xticks(size=28)
-        plt.yticks(size=28)
-        plt.show()
+    # for i in range(2):  #len(pairs)
+    #     pair = pairs[i]
+    #     pair_art = pairs_gen[i]
+    #     pair_len = pair[X].size
+    #     # print(pair_len)
+    #     plt.plot(np.arange(pair_len),
+    #              pair[X_VELOCITY],
+    #              's-',
+    #              color='r',
+    #              label='data')
+    #     plt.plot(np.arange(pair_len),
+    #              pair_art[X_VELOCITY],
+    #              'o-',
+    #              color='b',
+    #              label='gen')
+    #     plt.legend(loc='best', fontsize=28)
+    #     plt.xlabel('t/dt', fontdict={'family': 'Times New Roman', 'size': 32})
+    #     plt.ylabel('Velocity',
+    #                fontdict={
+    #                    'family': 'Times New Roman',
+    #                    'size': 32
+    #                })
+    #     plt.xticks(size=28)
+    #     plt.yticks(size=28)
+    #     plt.show()
 
     # print(len(pairs))
+
+    ###########################################
+    ## QP
+    ###########################################
+
+    # dynamic
+    # h = 0.5950
+    # r = 17.5223
+    # after
+    # h = 0.3869
+    # r = 14.9850
+    h = 0.3972
+    r = 15.0363
+    Se = Dhw - h * Vel - r
+    dt = 0.04
+    A_mat = np.array([[1, dt], [0, 1]])
+    B_mat = np.array([-dt * (h + dt), -dt])
+    D_mat = np.array([dt, 1])
+
+    # parameters
+    d_sigma = 0.406204
+    N_data = 50
+    beta = 0.2
+    # lambda_v = 0.01 * N_data / 719.34  #0.0006 (noise_cov * Bx @ Bx)**(-1)
+    lambda_v = 0.01 * N_data / 1096.5  #0.000912
+    lambda_c = 2.4
+    lambda_b = 0.0005
+    random_size = 25
+    thres_1 = 40
+    thres_2 = 12
+    lambda_U_ker = 0.2  # 0.05
+    lambda_U_quad = 0.1  # 0.05
+    con_v1_ker = 2.5e-1
+    con_v2_ker = 2.5e-1
+    con_v1_quad = 1e-1
+    con_v2_quad = 1e-1
+
+    # data selection
+    ind = np.random.randint(1, len(Se), N_data * 2)
+    x_cur, x_next, acc, pr_a = [], [], [], []
+    x_cur.append(np.array([Se[ind[0]], Nu[ind[0]]]))
+    x_next.append(np.array([Se[ind[0] + 1], Nu[ind[0]] + 1]))
+    acc.append(np.array([Acc[ind[0]]]))
+    pr_a.append(np.array([Pr_a[ind[0]]]))
+
+    for i in range(N_data * 2):
+        sign = 0
+        for x in x_cur:
+            if Se[ind[i]] < x[0] + thres_1 / N_data**0.5 / 5 and Se[
+                    ind[i]] > x[0] - thres_1 / 5 / N_data**0.5 and Nu[
+                        ind[i]] < x[1] + thres_2 / 5 / N_data**0.5 and Nu[
+                            ind[i]] > x[1] - thres_2 / 5 / N_data**0.5:
+                sign = 1
+                break
+        if sign == 0:
+            x_cur.append(np.array([Se[ind[i]], Nu[ind[i]]]))
+            x_next.append(np.array([Se[ind[i] + 1], Nu[ind[i] + 1]]))
+            acc.append(np.array([Acc[ind[i]]]))
+            pr_a.append(np.array([Pr_a[ind[i]]]))
+
+        if len(x_cur) == N_data:
+            break
+
+    QP_new(x_cur, acc, pr_a, d_sigma, random_size, A_mat, B_mat, D_mat, beta,
+           lambda_v, lambda_c, lambda_b, lambda_U_ker, con_v1_ker, con_v2_ker)
+
+    QP_quad(x_cur, acc, pr_a, d_sigma, random_size, A_mat, B_mat, D_mat, beta,
+            lambda_v, lambda_c, lambda_b, lambda_U_quad, con_v1_quad,
+            con_v2_quad)
+
+    ###########################################
+    ## scatter
+    ###########################################
+    # scatter_plot(Se, Nu)
 
 
 if __name__ == '__main__':

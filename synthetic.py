@@ -42,14 +42,15 @@ beta = 0.2
 lambda_v = 0.01 * N_data / 719.34  #2000
 lambda_c = 10
 lambda_b = 0.0005
-random_size = 20
+random_size = 25
 thres_1 = 30  #40
 thres_2 = 8  #12
-lambda_U = 0.03
-reg_v1_ker = 2e-1
-reg_v2_ker = 2e-1
-reg_v1_quad = 1e-1
-reg_v2_quad = 1e-1
+lambda_U_ker = 0.25  # 0.05
+lambda_U_quad = 0.1  # 0.05
+con_v1_ker = 2e-1
+con_v2_ker = 2e-1
+con_v1_quad = 1e-1
+con_v2_quad = 1e-1
 
 x_cur, x_next = [], []
 ind, ind_pr = [], np.random.randint(1, len(syn_x) + 1, N_data * 4)
@@ -81,13 +82,13 @@ acc = np.zeros(N_data)
 for i in range(N_data):
     acc[i] = kp * x_cur[i][0] + kd * x_cur[i][1]
 
-QP_new(x_cur, x_next, acc, np.zeros(N_data), d_sigma, random_size, A_mat,
-       B_mat, D_mat, beta, lambda_v, lambda_c, lambda_b, lambda_U, reg_v1_ker,
-       reg_v2_ker)
+QP_new(x_cur, acc, np.zeros(N_data), d_sigma, random_size, A_mat, B_mat, D_mat,
+       beta, lambda_v, lambda_c, lambda_b, lambda_U_ker, con_v1_ker,
+       con_v2_ker)
 
-QP_quad(x_cur, x_next, acc, np.zeros(N_data), d_sigma, random_size, A_mat,
-        B_mat, D_mat, beta, lambda_v, lambda_c, lambda_b, lambda_U,
-        reg_v1_quad, reg_v2_quad)
+QP_quad(x_cur, acc, np.zeros(N_data), d_sigma, random_size, A_mat, B_mat,
+        D_mat, beta, lambda_v, lambda_c, lambda_b, lambda_U_quad, con_v1_quad,
+        con_v2_quad)
 # def QP_new_syn(x_cur, x_next):
 #     N_data = len(x_cur)
 #     P_mat = np.zeros((N_data, N_data))
